@@ -183,6 +183,27 @@ function write_interval(state, interval::Interval)
     end
 end
 
+function write_cblock(write_fn::Function, state::WriterState)
+    io_temp = IOBuffer()
+    temp_state = WriterState(io_temp, state)
+
+    write_fn(temp_state)
+
+    # Flush remaining bytes in temp buffer to the IOBuffer
+    if temp_state.pos > 1
+        write(io_temp, @view temp_state.buf[1:(temp_state.pos - 1)])
+    end
+
+    uncomp_bytes = take!(io_temp)
+    comp_bytes = transcode(DeflateCompressor, uncomp_bytes)
+
+    write_byte(state, 34)                       # CBLOCK record type
+    wui(state, UInt64(0))                       # comp_type = DEFLATE
+    wui(state, UInt64(length(uncomp_bytes)))    # uncompressed byte count
+    wui(state, UInt64(length(comp_bytes)))      # compressed byte count
+    write_bytes(state, comp_bytes, length(comp_bytes))
+end
+
 function write_bytes(state, bytes::AbstractVector{UInt8}, nbytes::Integer = length(bytes))
     count = 0
     while true

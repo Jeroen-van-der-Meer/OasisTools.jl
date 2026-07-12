@@ -8,11 +8,11 @@ function oasiswrite(filename::AbstractString, oas::Oasis; bufsize = 16 * 1024 * 
     write_bytes(state, MAGIC_BYTES)
     write_start(state, unit)
     write_roots(state)
-    # FIXME: CBLOCK
-    write_propname(state, :S_TOP_CELL)
-    construct_and_write_cellname_references(state)
-    write_layers(state)
-    # FIXME: End CBLOCK
+    write_cblock(state) do cblock_state
+        write_propname(cblock_state, :S_TOP_CELL)
+        construct_and_write_cellname_references(cblock_state)
+        write_layers(cblock_state)
+    end
     write_cells(state)
     write_end(state)
 

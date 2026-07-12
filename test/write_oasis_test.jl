@@ -279,6 +279,54 @@ TOP"""
     end
 end
 
+@testset "CBLOCK writing" begin
+    @testset "Metadata is wrapped in a CBLOCK" begin
+        oas = Oasis()
+        rect = Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(10, 10))
+        shape = Shape(rect, UInt64(1), UInt64(0), nothing)
+        cell = Cell(:CBLOCK_TEST, [shape], CellPlacement[], 1000.0, true)
+        add_cell!(oas, cell)
+        add_layer!(oas, Layer(:M1, 1, 0))
+        oasiswrite("temp", oas)
+
+        # Verify the file contains a CBLOCK record (record type 34)
+        raw = read("temp")
+        @test UInt8(34) in raw
+
+        # Verify round-trip works through the CBLOCK
+        oas2 = oasisread("temp")
+        @test oas2 isa Oasis
+        cell2 = oas2["CBLOCK_TEST"]
+        @test length(shapes(cell2)) == 1
+        @test shapes(cell2)[1].shape isa Rect{2, Int64}
+        @test length(oas2.layers) == 1
+        @test name(oas2.layers[1]) == :M1
+    end
+    GC.gc()
+    @testset "Multiple cells and layers through CBLOCK" begin
+        oas = Oasis()
+        rect1 = Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(5, 5))
+        rect2 = Rect{2, Int64}(Point{2, Int64}(10, 10), Point{2, Int64}(20, 20))
+        s1 = Shape(rect1, UInt64(1), UInt64(0), nothing)
+        s2 = Shape(rect2, UInt64(2), UInt64(1), nothing)
+        cell1 = Cell(:CELL_A, [s1], CellPlacement[], 1000.0, true)
+        placement = CellPlacement(:CELL_A, Point{2, Int64}(100, 200), 0.0, 1.0, false, nothing)
+        cell2 = Cell(:CELL_B, [s2], [placement], 1000.0, true)
+        add_cell!(oas, cell1)
+        add_cell!(oas, cell2)
+        add_layer!(oas, Layer(:L1, 1, 0))
+        add_layer!(oas, Layer(:L2, 2, 1))
+        oasiswrite("temp", oas)
+        oas2 = oasisread("temp")
+        @test length(oas2.cells) == 2
+        @test length(oas2.layers) == 2
+        @test name(oas2.layers[1]) == :L1
+        @test name(oas2.layers[2]) == :L2
+        @test shapes(oas2["CELL_A"])[1].shape isa Rect{2, Int64}
+        @test placements(oas2["CELL_B"])[1].cellName == :CELL_A
+    end
+end
+
 @testset "Write Cells with shapes" begin
     @testset "Polygon" begin
         oas = Oasis()

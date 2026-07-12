@@ -140,7 +140,7 @@ Struct used to encode the state of the OASIS file writer.
 # Properties
 
 - `oas::Oasis`: The object we're trying to save.
-- `io::IOStream`: File we're saving to.
+- `io::IO`: File we're saving to.
 - `buf::Vector{UInt8}`: We write to the file in batches, and temporarily store the output in
   this buffer.
 - `bufsize::Int64`: Size of `buf`.
@@ -149,7 +149,7 @@ Struct used to encode the state of the OASIS file writer.
 See also [`ParserState`](@ref), [`CellParserState`](@ref).
 """
 mutable struct WriterState
-    const io::IOStream # File we're saving to.
+    const io::IO # File we're saving to.
     const buf::Vector{UInt8} # An output buffer of some size, probably big.
     const bufsize::Int64 # Length of buffer stored separately.
     pos::Int64 # Position in buffer.
@@ -171,3 +171,12 @@ end
 WriterState(filename::AbstractString, bufsize::Integer) = WriterState(
     Oasis(), filename, bufsize
 )
+
+function WriterState(io::IO, parent::WriterState; bufsize::Integer = 4096)
+    return WriterState(
+        io,
+        Vector{UInt8}(undef, bufsize), bufsize, 1,
+        parent.cells, parent.layers,
+        parent.cellnameReferences, parent.mod
+    )
+end
