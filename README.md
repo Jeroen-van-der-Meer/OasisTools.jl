@@ -41,5 +41,4 @@ It returns an `Oasis` object, which contains a list of all the cells in your OAS
 - Properties are currently ignored.
 - Backwards-compatible extensions are not supported. You will get an error if your file contains any.
 - Curvilinear features are not yet supported.
-- Writing OASIS files is only supported for lazy-loaded cells.
 - One day there will be functionality to visually display your layout &mdash; stay tuned.

@@ -278,3 +278,167 @@ TOP"""
         @test placement2.flipped == true
     end
 end
+
+@testset "Write Cells with shapes" begin
+    @testset "Polygon" begin
+        oas = Oasis()
+        pts = [
+            Point{2, Int64}(0, 0), Point{2, Int64}(100, 0),
+            Point{2, Int64}(100, 200), Point{2, Int64}(0, 200)
+        ]
+        polygon = Polygon(pts)
+        shape = Shape(polygon, UInt64(1), UInt64(0), nothing)
+        cell = Cell(:POLY, [shape], CellPlacement[], 1000.0, true)
+        add_cell!(oas, cell)
+        add_layer!(oas, Layer(:M1, 1, 0))
+        oasiswrite("temp", oas)
+        oas2 = oasisread("temp")
+        cell2 = oas2["POLY"]
+        @test length(shapes(cell2)) == 1
+        s = shapes(cell2)[1]
+        @test s.shape isa Polygon{2, Int64}
+        @test s.layerNumber == 1
+        @test s.datatypeNumber == 0
+        @test s.shape.exterior == pts
+        @test isnothing(s.repetition)
+    end
+    GC.gc()
+    @testset "Rectangle" begin
+        oas = Oasis()
+        rect = Rect{2, Int64}(Point{2, Int64}(10, 20), Point{2, Int64}(30, 40))
+        shape = Shape(rect, UInt64(2), UInt64(1), nothing)
+        cell = Cell(:RECT, [shape], CellPlacement[], 1000.0, true)
+        add_cell!(oas, cell)
+        oasiswrite("temp", oas)
+        oas2 = oasisread("temp")
+        cell2 = oas2["RECT"]
+        @test length(shapes(cell2)) == 1
+        s = shapes(cell2)[1]
+        @test s.shape isa Rect{2, Int64}
+        @test s.shape.origin == Point{2, Int64}(10, 20)
+        @test s.shape.widths == Point{2, Int64}(30, 40)
+    end
+    GC.gc()
+    @testset "Square rectangle" begin
+        oas = Oasis()
+        rect = Rect{2, Int64}(Point{2, Int64}(5, 5), Point{2, Int64}(50, 50))
+        shape = Shape(rect, UInt64(1), UInt64(0), nothing)
+        cell = Cell(:SQR, [shape], CellPlacement[], 1000.0, true)
+        add_cell!(oas, cell)
+        oasiswrite("temp", oas)
+        oas2 = oasisread("temp")
+        s = shapes(oas2["SQR"])[1]
+        @test s.shape isa Rect{2, Int64}
+        @test s.shape.widths == Point{2, Int64}(50, 50)
+    end
+    GC.gc()
+    @testset "Circle" begin
+        oas = Oasis()
+        circle = HyperSphere{2, Int64}(Point{2, Int64}(100, 200), 50)
+        shape = Shape(circle, UInt64(3), UInt64(0), nothing)
+        cell = Cell(:CIRC, [shape], CellPlacement[], 1000.0, true)
+        add_cell!(oas, cell)
+        oasiswrite("temp", oas)
+        oas2 = oasisread("temp")
+        s = shapes(oas2["CIRC"])[1]
+        @test s.shape isa HyperSphere{2, Int64}
+        @test s.shape.center == Point{2, Int64}(100, 200)
+        @test s.shape.r == 50
+    end
+    GC.gc()
+    @testset "Path" begin
+        oas = Oasis()
+        pts = [
+            Point{2, Int64}(0, 0), Point{2, Int64}(100, 0),
+            Point{2, Int64}(100, 100)
+        ]
+        path = OasisTools.Path(pts, Int64(20))
+        shape = Shape(path, UInt64(1), UInt64(0), nothing)
+        cell = Cell(:PATH, [shape], CellPlacement[], 1000.0, true)
+        add_cell!(oas, cell)
+        oasiswrite("temp", oas)
+        oas2 = oasisread("temp")
+        s = shapes(oas2["PATH"])[1]
+        @test s.shape isa OasisTools.Path{2, Int64}
+        @test s.shape.points == pts
+        @test s.shape.width == 20
+    end
+    GC.gc()
+    @testset "Text" begin
+        oas = Oasis()
+        text = OasisTools.Text(:hello, Point{2, Int64}(50, 60), nothing)
+        shape = Shape(text, UInt64(10), UInt64(0), nothing)
+        cell = Cell(:TXT, [shape], CellPlacement[], 1000.0, true)
+        add_cell!(oas, cell)
+        oasiswrite("temp", oas)
+        oas2 = oasisread("temp")
+        s = shapes(oas2["TXT"])[1]
+        @test s.shape isa OasisTools.Text
+        @test s.shape.text == :hello
+        @test s.shape.location == Point{2, Int64}(50, 60)
+    end
+    GC.gc()
+    @testset "Multiple shapes on different layers" begin
+        oas = Oasis()
+        rect1 = Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(10, 10))
+        rect2 = Rect{2, Int64}(Point{2, Int64}(20, 20), Point{2, Int64}(30, 30))
+        s1 = Shape(rect1, UInt64(1), UInt64(0), nothing)
+        s2 = Shape(rect2, UInt64(2), UInt64(1), nothing)
+        cell = Cell(:MULTI, [s1, s2], CellPlacement[], 1000.0, true)
+        add_cell!(oas, cell)
+        oasiswrite("temp", oas)
+        oas2 = oasisread("temp")
+        cell2 = oas2["MULTI"]
+        @test length(shapes(cell2)) == 2
+        @test shapes(cell2)[1].layerNumber == 1
+        @test shapes(cell2)[2].layerNumber == 2
+        @test shapes(cell2)[2].datatypeNumber == 1
+    end
+    GC.gc()
+    @testset "Shape with repetition" begin
+        oas = Oasis()
+        rect = Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(5, 5))
+        rep = [Point{2, Int64}(0, 0), Point{2, Int64}(10, 0), Point{2, Int64}(20, 0)]
+        shape = Shape(rect, UInt64(1), UInt64(0), rep)
+        cell = Cell(:REP, [shape], CellPlacement[], 1000.0, true)
+        add_cell!(oas, cell)
+        oasiswrite("temp", oas)
+        oas2 = oasisread("temp")
+        s = shapes(oas2["REP"])[1]
+        @test s.repetition == rep
+    end
+    GC.gc()
+    @testset "Mixed placements and shapes" begin
+        oas = Oasis()
+        rect = Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(10, 10))
+        shape = Shape(rect, UInt64(1), UInt64(0), nothing)
+        inner = Cell(:INNER, Shape[], CellPlacement[], 1000.0, false)
+        placement = CellPlacement(:INNER, Point{2, Int64}(50, 50), 0.0, 1.0, false, nothing)
+        outer = Cell(:OUTER, [shape], [placement], 1000.0, true)
+        add_cell!(oas, inner)
+        add_cell!(oas, outer)
+        oasiswrite("temp", oas)
+        oas2 = oasisread("temp")
+        cell2 = oas2["OUTER"]
+        @test length(placements(cell2)) == 1
+        @test placements(cell2)[1].cellName == :INNER
+        @test length(shapes(cell2)) == 1
+        @test shapes(cell2)[1].shape isa Rect{2, Int64}
+    end
+    GC.gc()
+    @testset "Negative coordinates" begin
+        oas = Oasis()
+        pts = [
+            Point{2, Int64}(-100, -200), Point{2, Int64}(100, -200),
+            Point{2, Int64}(100, 200), Point{2, Int64}(-100, 200)
+        ]
+        polygon = Polygon(pts)
+        shape = Shape(polygon, UInt64(1), UInt64(0), nothing)
+        cell = Cell(:NEG, [shape], CellPlacement[], 1000.0, true)
+        add_cell!(oas, cell)
+        oasiswrite("temp", oas)
+        oas2 = oasisread("temp")
+        s = shapes(oas2["NEG"])[1]
+        @test s.shape.exterior == pts
+    end
+end

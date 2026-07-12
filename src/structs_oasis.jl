@@ -434,7 +434,8 @@ NEW
 """
 function add_cell!(
     cells::AbstractVector{Union{LazyCell, Cell}},
-    new_cell::Union{LazyCell, Cell}
+    new_cell::Union{LazyCell, Cell};
+    kwargs...
 )
     if isnothing(find_cell(cells, new_cell.name))
         push!(cells, new_cell)

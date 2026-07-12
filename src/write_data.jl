@@ -139,6 +139,17 @@ function write_repetition(state, value::Vector{Point{2, Int64}})
     end
 end
 
+function write_point_list(state, points::Vector{Point{2, Int64}})
+    # Write as g-delta list (type 4). Points are absolute coordinates; we delta-encode them.
+    # The first element is the implicit origin (0,0) added by read_point_list, so vertex_count
+    # excludes it.
+    write_byte(state, 0x04)
+    wui(state, length(points) - 1)
+    @inbounds for i in 2:length(points)
+        write_g_delta(state, points[i] - points[i - 1])
+    end
+end
+
 function write_property_value(state, value::Symbol)
     # Warning: We're storing the property value as an n-string because that's what S_TOP_CELL
     # expects. That said, other properties may require an a-string or b-string instead.
