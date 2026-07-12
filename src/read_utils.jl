@@ -94,29 +94,3 @@ function is_end_of_cell(state, next_record::UInt8)
         return false
     end
 end
-
-function find_root_cell(state::FileParserState)
-    if state.lazy
-        # If a lazy loader was used, we cannot infer the cell hierarchy, and instead fall back
-        # to finding the optional S_TOP_CELL property record which, if it exists, must be
-        # located near the start of the file.
-        state.pos = 15 # Place pointer after the header bytes and START record.
-        skip_start(state)
-        while true
-            record_type = read_byte(state)
-            if record_type == 28
-                read_property_if_S_TOP_CELL(state)
-            elseif record_type == 29
-                continue
-            else
-                return
-            end
-        end
-    else
-        # If an ordinary loader was used, the roots can be inferred from the hierarchy.
-        h = state.oas.hierarchy.hierarchy
-        all_nodes = keys(h)
-        child_nodes = unique(k for children in values(h) for k in children)
-        append!(state.oas.hierarchy.roots, setdiff(all_nodes, child_nodes))
-    end
-end
