@@ -108,6 +108,134 @@ struct CellPlacement
     repetition::Union{Nothing, Vector{Point{2, Int64}}, PointGridRange}
 end
 
+"""
+    *(outer::CellPlacement, inner::CellPlacement)
+
+Compose two cell placements. If `outer` places cell B inside cell A, and `inner` places cell C
+inside cell B, then `outer * inner` describes the placement of cell C inside cell A.
+"""
+function Base.:*(outer::CellPlacement, inner::CellPlacement)
+    mag = outer.magnification * inner.magnification
+    
+    flip = outer.flipped ⊻ inner.flipped
+
+    # If outer is flipped, the inner rotation reverses direction.
+    rot = outer.flipped ? outer.rotation - inner.rotation : outer.rotation + inner.rotation
+    rot = mod(rot, 360.0)
+
+    # Location: apply outer's linear transformation to inner's location, then add outer's offset.
+    loc = _transform_point(inner.location, outer.rotation, outer.magnification, outer.flipped) +
+          outer.location
+
+    # Repetition: transform inner repetition by outer's linear part, then Minkowski sum.
+    inner_rep = _transform_repetition(
+        inner.repetition, outer.rotation, outer.magnification, outer.flipped
+    )
+    rep = _minkowski_repetition(outer.repetition, inner_rep)
+
+    return CellPlacement(inner.cellName, loc, rot, mag, flip, rep)
+end
+
+function _transform_point(
+    p::Point{2, Int64}, rotation::Float64, magnification::Float64, flipped::Bool
+)
+    x, y = Float64(p[1]), Float64(p[2])
+    if flipped
+        y = -y
+    end
+    θ = deg2rad(rotation)
+    c, s = cos(θ), sin(θ)
+    return Point{2, Int64}(
+        round(Int64, magnification * (c * x - s * y)),
+        round(Int64, magnification * (s * x + c * y))
+    )
+end
+
+_transform_repetition(::Nothing, ::Float64, ::Float64, ::Bool) = nothing
+
+function _transform_repetition(
+    rep::Vector{Point{2, Int64}},
+    rotation::Float64,
+    magnification::Float64,
+    flipped::Bool
+)
+    return [_transform_point(p, rotation, magnification, flipped) for p in rep]
+end
+
+function _transform_repetition(
+    rep::PointGridRange,
+    rotation::Float64,
+    magnification::Float64,
+    flipped::Bool
+)
+    return PointGridRange(
+        _transform_point(rep.start, rotation, magnification, flipped),
+        rep.nstepx, rep.nstepy,
+        _transform_point(rep.stepx, rotation, magnification, flipped),
+        _transform_point(rep.stepy, rotation, magnification, flipped)
+    )
+end
+
+_minkowski_repetition(::Nothing, ::Nothing) = nothing
+_minkowski_repetition(::Nothing, b) = b
+_minkowski_repetition(a, ::Nothing) = a
+
+function _minkowski_repetition(a::PointGridRange, b::PointGridRange)
+    a_is_1d = a.nstepx == 1 || a.nstepy == 1
+    b_is_1d = b.nstepx == 1 || b.nstepy == 1
+
+    if a_is_1d && b_is_1d
+        step_a, n_a = a.nstepy == 1 ? (a.stepx, a.nstepx) : (a.stepy, a.nstepy)
+        step_b, n_b = b.nstepy == 1 ? (b.stepx, b.nstepx) : (b.stepy, b.nstepy)
+
+        # Check linear independence via cross product
+        if step_a[1] * step_b[2] - step_a[2] * step_b[1] != 0
+            return PointGridRange(a.start + b.start, n_a, n_b, step_a, step_b)
+        end
+    end
+
+    # Fall back to explicit enumeration
+    return _minkowski_vector(collect(a), collect(b))
+end
+
+function _minkowski_repetition(a::Vector{Point{2, Int64}}, b::Vector{Point{2, Int64}})
+    return _minkowski_vector(a, b)
+end
+
+function _minkowski_repetition(a::PointGridRange, b::Vector{Point{2, Int64}})
+    return _minkowski_vector(collect(a), b)
+end
+
+function _minkowski_repetition(a::Vector{Point{2, Int64}}, b::PointGridRange)
+    return _minkowski_vector(a, collect(b))
+end
+
+function _minkowski_vector(a::Vector{Point{2, Int64}}, b::Vector{Point{2, Int64}})
+    result = Set{Point{2, Int64}}()
+    for pa in a, pb in b
+        push!(result, pa + pb)
+    end
+    return sort!(collect(result))
+end
+
+"""
+    expand(placement::CellPlacement)
+
+Expand a `CellPlacement` with a repetition into a generator of individual `CellPlacement`
+objects, each with `repetition = nothing` and the repetition offset added to `location`.
+If the placement has no repetition, yields a single placement.
+"""
+function expand(p::CellPlacement)
+    rep = p.repetition
+    if isnothing(rep)
+        return (p for _ in 1:1)
+    end
+    return (
+        CellPlacement(p.cellName, p.location + offset, p.rotation, p.magnification, p.flipped, nothing)
+        for offset in rep
+    )
+end
+
 abstract type AbstractCell end
 
 """

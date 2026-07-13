@@ -47,6 +47,7 @@ function Base.getindex(r::PointGridRange, i::Integer, j::Integer)
     1 <= j <= s2 || throw(BoundsError(r, [i, j]))
     return r.start + (i - 1) * r.stepx + (j - 1) * r.stepy
 end
+Base.IteratorSize(::Type{PointGridRange}) = Base.HasLength()
 Base.size(r::PointGridRange) = (r.nstepx, r.nstepy)
 Base.length(r::PointGridRange) = prod(size(r))
 function Base.iterate(r::PointGridRange, i::Integer = zero(length(r)))

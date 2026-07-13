@@ -14,6 +14,7 @@ export cell_number
 export CellHierarchy
 export CellPlacement
 export cells
+export expand
 export Layer
 export layer
 export layers
