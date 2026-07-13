@@ -1,7 +1,7 @@
 name = "OasisTools"
 uuid = "06265d1e-e248-4aa0-9c0a-73a2b8992637"
 authors = ["Jeroen van der Meer <meer@vivaldi.net>"]
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
 CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"

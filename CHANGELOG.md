@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.0
 
 - Custom shows.
 - Lazy loading.
@@ -8,6 +8,7 @@
 - Bug fixes.
 - Minor performance improvements.
 - More lenient dependency compats.
+- Various helper functions.
 
 ## v0.1.0
 
