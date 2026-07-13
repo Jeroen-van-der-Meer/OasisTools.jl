@@ -8,9 +8,7 @@ export add_cell!
 export add_layer!
 export Cell
 export cell_hierarchy
-export cell_name
 export cell_names
-export cell_number
 export CellHierarchy
 export CellPlacement
 export cells

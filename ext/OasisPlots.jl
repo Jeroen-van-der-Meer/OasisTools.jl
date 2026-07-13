@@ -9,6 +9,12 @@ end
 using GeometryBasics
 using Makie
 
+"""
+    plot_shape!(ax, shape)
+
+Plot a single [`Shape`](@ref) onto a Makie `Axis`. Supported for shapes backed by
+`AbstractGeometry{2, Int64}` (rectangles, polygons, etc.).
+"""
 function OasisTools.plot_shape!(ax::Axis, shape::Shape{<:Any})
     @error "Not implemented"
 end

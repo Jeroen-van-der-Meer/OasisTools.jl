@@ -1,3 +1,17 @@
+"""
+    oasiswrite(filename, oas; bufsize)
+
+Write an [`Oasis`](@ref) object to an OASIS file.
+
+# Arguments
+
+- `filename::AbstractString`: Path of the output file.
+- `oas::Oasis`: The OASIS object to write.
+
+# Keyword Arguments
+
+- `bufsize::Integer = 16 * 1024 * 1024`: Size of the output buffer in bytes.
+"""
 function oasiswrite(filename::AbstractString, oas::Oasis; bufsize = 16 * 1024 * 1024)
     units = unique(cell.unit for cell in cells(oas))
     @assert length(units) == 1 "Writing of cells with incompatible unit length not supported yet"

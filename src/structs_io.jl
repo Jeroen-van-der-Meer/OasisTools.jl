@@ -1,27 +1,5 @@
 abstract type AbstractParserState end
 
-"""
-    mutable struct FileParserState
-
-Struct used to encode the state of the OASIS file parser.
-
-# Properties
-
-- `buf::Vector{UInt8}`: Mmapped buffer of OASIS file.
-- `pos::Int64`: Byte position in buffer.
-- `cells::Vector{PreprocessedCell}`: Pre-processed cells that the parser has collected.
-- `layers::Vector{Layer}`: (Explicitly named) layers that the parser has encountered.
-- `cellnameReferences::Dict{UInt64, Symbol}`: Internal cell name references.
-- `textstringReferences::Dict{UInt64, Symbol}`: Internal text string references.
-- `propnameReferences::Dict{UInt64, Symbol}`: Internal references to names of properties.
-- `propstringReferences::Dict{UInt64, Symbol}`: Internal references to property string values.
-- `propertyPositions::Vector{Int64}`: Byte locations of file-level properties that the parser
-  has encountered. Currently only used to find `S_TOP_CELL` after having parsed the file.
-- `metadata::Metadata`: Some metadata associated to the file.
-- `mod::FileModalVariables`: File-level modal variables.
-
-See also [`WriterState`](@ref), [`CellParserState`](@ref).
-"""
 mutable struct FileParserState <: AbstractParserState
     const buf::Vector{UInt8}
     pos::Int64
@@ -44,23 +22,6 @@ function FileParserState(buf::AbstractVector{UInt8})
     )
 end
 
-"""
-    mutable struct CellParserState
-
-Struct used to encode the state of the CELL record parser.
-
-# Properties
-
-- `buf::Vector{UInt8}`: Mmapped buffer of OASIS file.
-- `pos::Int64`: Byte position in buffer.
-- `cellnameReferences::Dict{UInt64, Symbol}`: Internal cell name references.
-- `textstringReferences::Dict{UInt64, Symbol}`: Internal text string references.
-- `shapes::Vector{Shape}`: The shapes it's collecting.
-- `placements::Vector{CellPlacement}`: The placements it's collecting.
-- `mod::ModalVariables`: Modal variables it needs to keep track of.
-
-See also [`LazyCellParserState`](@ref).
-"""
 mutable struct CellParserState <: AbstractParserState
     const buf::Vector{UInt8}
     pos::Int64
@@ -89,18 +50,6 @@ function CellParserState(buf::AbstractVector{UInt8})
     )
 end
 
-"""
-    struct LazyCellParserState
-
-Struct used to encode the state of the lazy CELL record parser.
-
-# Properties
-
-- `buf::Vector{UInt8}`: Mmapped buffer of OASIS file.
-- `pos::Int64`: Byte position in buffer.
-
-See also [`CellParserState`](@ref).
-"""
 mutable struct LazyCellParserState <: AbstractParserState
     const buf::Vector{UInt8}
     pos::Int64
@@ -132,22 +81,6 @@ new_state(state::CellParserState, new_buf::AbstractVector{UInt8}) =
 new_state(::LazyCellParserState, new_buf::AbstractVector{UInt8}) =
     LazyCellParserState(new_buf, 1)
 
-"""
-    struct WriterState
-
-Struct used to encode the state of the OASIS file writer.
-
-# Properties
-
-- `oas::Oasis`: The object we're trying to save.
-- `io::IO`: File we're saving to.
-- `buf::Vector{UInt8}`: We write to the file in batches, and temporarily store the output in
-  this buffer.
-- `bufsize::Int64`: Size of `buf`.
-- `pos::Int64`: Position in the buffer.
-
-See also [`ParserState`](@ref), [`CellParserState`](@ref).
-"""
 mutable struct WriterState
     const io::IO # File we're saving to.
     const buf::Vector{UInt8} # An output buffer of some size, probably big.

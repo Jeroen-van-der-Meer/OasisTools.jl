@@ -10,7 +10,7 @@ Geometric shape (such as a polygon or rectangle) or text.
   doesn't have an appropriate object to encode paths. If the shape is text, then
   `shape::OasisTools.Text`.
 - `layerNumber::UInt64`: The layer that your shape lives in. You can find the name of the layer
-  using the `references` field of your `Oasis` object.
+  using [`layer`](@ref).
 - `datatypeNumber::UInt64`: The 'datatype' that your shape lives in. To clarify, if your shape
   lives in `(1/0)`, then `datatypeNumber = 0`.
 - `repetition`: Specifies whether the shape is repeated. If not, `repetition = nothing`.
@@ -22,6 +22,18 @@ struct Shape{T}
     repetition::Union{Nothing, Vector{Point{2, Int64}}, PointGridRange}
 end
 
+"""
+    struct Layer
+
+A named layer, associating a human-readable name with a layer number and datatype number
+(or ranges thereof).
+
+# Properties
+
+- `name::Symbol`: Name of the layer.
+- `layerNumber::Interval`: Layer number or range of layer numbers.
+- `datatypeNumber::Interval`: Datatype number or range of datatype numbers.
+"""
 struct Layer
     name::Symbol
     layerNumber::Interval
@@ -37,6 +49,13 @@ Name of a layer.
 """
 name(layer::Layer) = layer.name
 
+"""
+    layer(oas, shape)
+    layer(oas, layer_number, datatype_number)
+
+Find the [`Layer`](@ref) that a given shape or layer/datatype number pair belongs to.
+Returns `nothing` if no matching layer is found.
+"""
 function layer(layers::AbstractVector{Layer}, l::Integer, d::Integer)
     index = find_layer(layers, l, d)
     isnothing(index) && return
@@ -97,7 +116,7 @@ Object encoding the placement of a cell in another cell.
 - `flipped::Bool`: Indicates whether or not the cell is reflected (or flipped) around the
   x-axis. Note: If a cell is flipped and has nonzero rotation, then the flip is applied first,
   and the rotation is applied second.
-- `repetition`: Specifies whether the shape is repeated. If not, `repetition = nothing`.
+- `repetition`: Specifies whether the placement is repeated. If not, `repetition = nothing`.
 """
 struct CellPlacement
     cellName::Symbol
@@ -284,6 +303,12 @@ Name of a cell.
 """
 name(cell::Cell) = cell.name
 
+"""
+    unit(cell)
+    unit(oas)
+
+Unit length of a cell or OASIS object, in grid steps per micron.
+"""
 unit(cell::Cell) = cell.unit
 
 """
@@ -377,8 +402,7 @@ end
 """
     cells(oas)
 
-Returns an overview of all cells in your OASIS file, indexed by the cell name number. You can
-find the corresponding cell name of a number `n` by running `cell_name(oas, n)`.
+Returns a list of all cells in your OASIS object.
 
 # Example
 
@@ -427,6 +451,12 @@ See also [`cells`](@ref), [`name`](@ref).
 """
 cell_names(oas::Oasis) = [c.name for c in oas.cells]
 
+"""
+    load_all_cells!(oas)
+
+Load all [`LazyCell`](@ref) objects in `oas` into memory, replacing them with [`Cell`](@ref)
+objects. Equivalent to calling [`load_cell!`](@ref) on every cell.
+"""
 function load_all_cells!(oas::Oasis)
     for (i, cell) in enumerate(cells(oas))
         load_cell!(oas, cell, i)
@@ -498,7 +528,7 @@ julia> loaded_cell = load_cell(lazy_cell)
 Cell TOP with 0 placements and 1 shape
 ```
 
-See also [`load_cell`](@ref).
+See also [`load_cell!`](@ref).
 """
 function load_cell(lazy_cell::LazyCell)
     state = CellParserState(lazy_cell)
@@ -619,12 +649,6 @@ roots(oas::Oasis) = roots(cells(oas))
 
 roots(cells::AbstractVector{Union{LazyCell, Cell}}) = [c.name for c in cells if c._root]
 
-"""
-    layer(oas, shape)
-    layer(oas, layer_number, datatype_number)
-
-Find the layer that a given shape belongs to.
-"""
 layer(oas::Oasis, shape::Shape) = layer(oas.layers, shape.layerNumber, shape.datatypeNumber)
 
 find_layer(oas::Oasis, shape::Shape) =
@@ -761,7 +785,7 @@ noname
 merge_oases(oasis::Oasis, others::Oasis...) = merge_oases!(copy(oasis), others...)
 
 """
-    merge!(oas, others...)
+    merge_oases!(oas, others...)
 
 Update OASIS file with content from the other OASIS files. Using an opinionated plural for
 'OASIS'.
