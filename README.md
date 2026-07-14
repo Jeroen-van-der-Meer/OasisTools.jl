@@ -1,6 +1,6 @@
 # OasisTools.jl
 
-[![Build Status](https://github.com/Jeroen-van-der-Meer/OasisTools.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/Jeroen-van-der-Meer/OasisTools.jl/actions/workflows/ci.yml?query=branch%3Amaster)
+[![Build Status](https://github.com/Jeroen-van-der-Meer/OasisTools.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/Jeroen-van-der-Meer/OasisTools.jl/actions/workflows/ci.yml?query=branch%3Amaster) [![Docs](https://img.shields.io/badge/Docs-stable-blue.svg)](https://Jeroen-van-der-Meer.github.io/OasisTools.jl/stable/)
 
 Toolkit for working with Open Artwork System Interchange Standard (OASIS) files. Work in progress.
 
