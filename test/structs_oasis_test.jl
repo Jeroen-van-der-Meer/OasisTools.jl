@@ -227,3 +227,53 @@ end
         @test count == 2
     end
 end
+
+@testset "Filter shapes by layer" begin
+    rect1 = Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(10, 10))
+    rect2 = Rect{2, Int64}(Point{2, Int64}(20, 20), Point{2, Int64}(30, 30))
+    rect3 = Rect{2, Int64}(Point{2, Int64}(40, 40), Point{2, Int64}(50, 50))
+    s1 = Shape(rect1, UInt64(1), UInt64(0), nothing)  # layer 1/0
+    s2 = Shape(rect2, UInt64(1), UInt64(1), nothing)  # layer 1/1
+    s3 = Shape(rect3, UInt64(2), UInt64(0), nothing)  # layer 2/0
+    cell = Cell(:TEST, [s1, s2, s3], CellPlacement[], 1000.0, true)
+
+    @testset "No filter returns all shapes" begin
+        @test length(shapes(cell)) == 3
+    end
+    @testset "Filter by Layer object" begin
+        l = Layer(:M0, OasisTools.Interval(1, 1), OasisTools.Interval(0, 0))
+        @test length(shapes(cell, l)) == 1
+        @test shapes(cell, l)[1] === s1
+    end
+    @testset "Filter by Layer with interval range" begin
+        l = Layer(:M, OasisTools.Interval(1, 2), OasisTools.Interval(0, 0))
+        result = shapes(cell, l)
+        @test length(result) == 2
+        @test s1 in result
+        @test s3 in result
+    end
+    @testset "Filter by layer number only" begin
+        result = shapes(cell, 1)
+        @test length(result) == 2
+        @test s1 in result
+        @test s2 in result
+    end
+    @testset "Filter by layer and datatype numbers" begin
+        result = shapes(cell, 1, 0)
+        @test length(result) == 1
+        @test result[1] === s1
+    end
+    @testset "Filter with no matches" begin
+        @test isempty(shapes(cell, 99))
+        @test isempty(shapes(cell, Layer(:X, 99, 99)))
+    end
+end
+
+@testset "Layer lookup by name" begin
+    oas = Oasis()
+    add_layer!(oas, :M0, 1, 0)
+    add_layer!(oas, :V0, 2, 0)
+    @test name(layer(oas, :M0)) == :M0
+    @test name(layer(oas, :V0)) == :V0
+    @test isnothing(layer(oas, :NONEXISTENT))
+end

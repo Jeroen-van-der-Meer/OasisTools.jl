@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Layer filtering API.
+
 ## v0.2.0
 
 - Custom shows.

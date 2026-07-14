@@ -49,16 +49,15 @@ Name of a layer.
 """
 name(layer::Layer) = layer.name
 
-"""
-    layer(oas, shape)
-    layer(oas, layer_number, datatype_number)
-
-Find the [`Layer`](@ref) that a given shape or layer/datatype number pair belongs to.
-Returns `nothing` if no matching layer is found.
-"""
 function layer(layers::AbstractVector{Layer}, l::Integer, d::Integer)
     index = find_layer(layers, l, d)
-    isnothing(index) && return
+    isnothing(index) && return nothing
+    return layers[index]
+end
+
+function layer(layers::AbstractVector{Layer}, name::Symbol)
+    index = find_layer(layers, name)
+    isnothing(index) && return nothing
     return layers[index]
 end
 
@@ -284,10 +283,48 @@ Cell(name::AbstractString, args...) = Cell(Symbol(name), args...)
 
 """
     shapes(cell)
+    shapes(cell, layer)
+    shapes(cell, layer_number)
+    shapes(cell, layer_number, datatype_number)
 
-List the shapes contained in `cell`. Not yet supported for `LazyCell`s.
+List the shapes contained in `cell`, optionally filtered by layer or layer number.
+
+# Examples
+
+```jldoctest
+julia> using OasisTools;
+
+julia> filename = joinpath(OasisTools.TESTDATA_DIRECTORY, "boxes.oas");
+
+julia> oas = oasisread(filename);
+
+julia> cell = oas[:BOTTOM];
+
+julia> shapes(cell)
+1-element Vector{Shape}:
+ Rectangle in layer (1/0) at (-185, 2875)
+
+julia> shapes(cell, 1, 0)
+1-element Vector{Shape}:
+ Rectangle in layer (1/0) at (-185, 2875)
+
+julia> wrong_layer = layer(oas, :V1);
+
+julia> shapes(cell, wrong_layer)
+Shape[]
+```
 """
 shapes(cell::Cell) = cell.shapes
+shapes(cell::Cell, l::Layer) = shapes(cell, l.layerNumber, l.datatypeNumber)
+shapes(cell::Cell, l::Integer) = shapes(cell, Interval(l, l))
+shapes(cell::Cell, l::Integer, d::Integer) = shapes(cell, Interval(l, l), Interval(d, d))
+shapes(cell::Cell, l::Interval) = shapes(cell, l, Interval(0, typemax(UInt64)))
+
+function shapes(cell::Cell, l::Interval, d::Interval)
+    return filter(cell.shapes) do s
+        s.layerNumber in l && s.datatypeNumber in d
+    end
+end
 
 """
     placements(cell)
@@ -649,16 +686,21 @@ roots(oas::Oasis) = roots(cells(oas))
 
 roots(cells::AbstractVector{Union{LazyCell, Cell}}) = [c.name for c in cells if c._root]
 
+"""
+    layer(oas, shape)
+    layer(oas, layer_number, datatype_number)
+    layer(oas, name::Symbol)
+
+Find the [`Layer`](@ref) that a given shape, layer/datatype number pair, or name belongs to.
+Returns `nothing` if no matching layer is found.
+"""
 layer(oas::Oasis, shape::Shape) = layer(oas.layers, shape.layerNumber, shape.datatypeNumber)
-
-find_layer(oas::Oasis, shape::Shape) =
-    find_layer(oas.layers, shape.layerNumber, shape.datatypeNumber)
-
 layer(oas::Oasis, l::Integer, d::Integer) = layer(oas.layers, l, d)
+layer(oas::Oasis, name::Symbol) = layer(oas.layers, name)
 
+find_layer(oas::Oasis, shape::Shape) = find_layer(oas.layers, shape.layerNumber, shape.datatypeNumber)
 find_layer(oas::Oasis, l::Integer, d::Integer) = find_layer(oas.layers, l, d)
-
-find_layer(oas::Oasis, name::Symbol) = find_layer(oas.shapes, name)
+find_layer(oas::Oasis, name::Symbol) = find_layer(oas.layers, name)
 
 """
     add_layer!(oas, layer)
