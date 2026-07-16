@@ -116,11 +116,11 @@ function _show_hierarchy(
 )
     for (i, root_name) in enumerate(roots)
         if current_depth == 0
-            i > 1 && print('\n')
+            i > 1 && print(io, '\n')
             print(io, prefix, root_name)
             new_prefix = prefix
         else
-            print('\n')
+            print(io, '\n')
             connector = last ? "└─ " : "├─ "
             print(io, prefix, connector, root_name)
             new_prefix = prefix * (last ? "   " : "│  ")
@@ -133,7 +133,7 @@ function _show_hierarchy(
             # Rather than printing them, we print an ellipsis (⋯) to indicate that there are children.
             if current_depth >= maxdepth
                 if nunique_children > 0
-                    print(io, '\n', new_prefix, "└─ ⋯")
+                    print(io, "\n", new_prefix, "└─ ⋯")
                 end
                 return
             end
@@ -150,7 +150,7 @@ function _show_hierarchy(
                 )
             end
         elseif root_cell isa LazyCell
-            print(io, '\n', new_prefix, "└─ ?")
+            print(io, "\n", new_prefix, "└─ ?")
         end
     end
 end
