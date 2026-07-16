@@ -48,6 +48,14 @@ include("modal_variables.jl")
 include("structs_data.jl")
 include("structs_oasis.jl")
 include("structs_io.jl")
+
+# Editing
+include("mutate.jl")
+
+# Cell hierarchy
+include("hierarchy.jl")
+
+# Custom shows
 include("shows.jl")
 
 # Reading
@@ -55,6 +63,9 @@ include("read_data.jl")
 include("read_records.jl")
 include("read_utils.jl")
 include("read_oasis.jl")
+
+# Lazy loading
+include("lazy.jl")
 
 # Skipping
 include("skip_data.jl")
