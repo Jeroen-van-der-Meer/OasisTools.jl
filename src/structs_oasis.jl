@@ -61,6 +61,8 @@ function layer(layers::AbstractVector{Layer}, name::Symbol)
     return layers[index]
 end
 
+layer(layers::AbstractVector{Layer}, s::Shape) = layer(layers, s.layerNumber, s.datatypeNumber)
+
 function find_layer(layers::AbstractVector{Layer}, l::Integer, d::Integer)
     return findfirst(r -> (l in r.layerNumber && d in r.datatypeNumber), layers)
 end
@@ -68,6 +70,8 @@ end
 function find_layer(layers::AbstractVector{Layer}, name::Symbol)
     return findfirst(r -> r.name == name, layers)
 end
+
+find_layer(layers::AbstractVector{Layer}, s::Shape) = find_layer(layers, s.layerNumber, s.datatypeNumber)
 
 Base.isdisjoint(l1::Layer, l2::Layer) =
     isdisjoint(l1.layerNumber, l2.layerNumber) ||
@@ -640,6 +644,90 @@ function add_cell!(
     return cells
 end
 
+"""
+    add_shape!(cell, shape)
+    add_shape!(cell, geometry, layer, datatype; repetition = nothing)
+
+Add a shape to a cell.
+
+# Arguments
+
+- `cell::Cell`: The cell to add the shape to.
+- `shape::Shape`: A pre-constructed shape
+
+Or:
+
+- `cell::Cell`: The cell to add the shape to.
+- `geometry`: A geometry primitive (e.g. `Rect`, `Polygon`, `Path`).
+- `layer::Integer`: The layer number.
+- `datatype::Integer`: The datatype number.
+- `repetition`: Optional repetition specification.
+"""
+add_shape!(cell::Cell, shape::Shape) = (push!(cell.shapes, shape); cell)
+
+function add_shape!(
+    cell::Cell, geom, layer::Integer, datatype::Integer;
+    repetition = nothing
+)
+    add_shape!(cell, Shape(geom, UInt64(layer), UInt64(datatype), repetition))
+end
+
+"""
+    add_placement!(cell, placement)
+    add_placement!(cell, cell_name, location; rotation = 0.0, magnification = 1.0,
+                   flipped = false, repetition = nothing)
+
+Add a cell placement to a cell.
+
+# Arguments
+
+- `cell::Cell`: The cell to add the placement to.
+- `placement::CellPlacement`: A pre-constructed placement
+
+Or:
+
+- `cell::Cell`: The cell to add the placement to.
+- `cell_name::Symbol`: Name of the cell to place.
+- `location::Point{2, Int64}`: Placement location.
+- `rotation`, `magnification`, `flipped`, `repetition`: Optional placement parameters.
+"""
+add_placement!(cell::Cell, p::CellPlacement) = (push!(cell.placements, p); cell)
+
+function add_placement!(
+    cell::Cell, cell_name::Symbol, location::Point{2, Int64};
+    rotation::Real = 0.0, magnification::Real = 1.0,
+    flipped::Bool = false, repetition = nothing)
+    add_placement!(
+        cell, CellPlacement(
+            cell_name, location, Float64(rotation),
+            Float64(magnification), flipped, repetition
+        )
+    )
+end
+
+"""
+    remove_cell!(oas, cell_name; cascade = false)
+
+Remove a cell from an OASIS object. Throws an error if no cell with the given name exists.
+
+If `cascade = true`, also removes all placements of the deleted cell from other cells. Beware
+that lazy-loaded cells are skipped.
+
+Otherwise, use [`validate_placements`](@ref) to check for dangling references.
+"""
+function remove_cell!(oas::Oasis, cell_name::Symbol; cascade::Bool = false)
+    index = find_cell(oas, cell_name)
+    isnothing(index) && error("No cell with name $cell_name")
+    deleteat!(oas.cells, index)
+    if cascade
+        for cell in cells(oas)
+            cell isa LazyCell && continue
+            filter!(p -> p.cellName != cell_name, cell.placements)
+        end
+    end
+    return oas
+end
+
 merge_cells(
     cells::AbstractVector{Union{LazyCell, Cell}},
     others::AbstractVector{Union{LazyCell, Cell}}...
@@ -694,13 +782,8 @@ roots(cells::AbstractVector{Union{LazyCell, Cell}}) = [c.name for c in cells if 
 Find the [`Layer`](@ref) that a given shape, layer/datatype number pair, or name belongs to.
 Returns `nothing` if no matching layer is found.
 """
-layer(oas::Oasis, shape::Shape) = layer(oas.layers, shape.layerNumber, shape.datatypeNumber)
-layer(oas::Oasis, l::Integer, d::Integer) = layer(oas.layers, l, d)
-layer(oas::Oasis, name::Symbol) = layer(oas.layers, name)
-
-find_layer(oas::Oasis, shape::Shape) = find_layer(oas.layers, shape.layerNumber, shape.datatypeNumber)
-find_layer(oas::Oasis, l::Integer, d::Integer) = find_layer(oas.layers, l, d)
-find_layer(oas::Oasis, name::Symbol) = find_layer(oas.layers, name)
+layer(oas::Oasis, args...) = layer(layers(oas), args...)
+find_layer(oas::Oasis, args...) = find_layer(layers(oas), args...)
 
 """
     add_layer!(oas, layer)
@@ -745,6 +828,40 @@ function add_layer!(layers::AbstractVector{Layer}, new_layer::Layer)
         end
     end
     push!(layers, new_layer)
+end
+
+"""
+    remove_layer!(oas, name::Symbol; cascade = false)
+    remove_layer!(oas, layer_number, datatype_number; cascade = false)
+
+Remove a layer from an OASIS object.
+
+If `cascade = true`, also removes all shapes whose layer/datatype numbers fall within the
+removed layer's intervals. Beware that lazy-loaded cells are skipped.
+"""
+function remove_layer!(oas::Oasis, name::Symbol; cascade::Bool=false)
+    index = find_layer(oas, name)
+    isnothing(index) && error("No layer with name $name")
+    removed = oas.layers[index]
+    deleteat!(oas.layers, index)
+    cascade && _cascade_remove_layer!(oas, removed)
+    return oas
+end
+
+function remove_layer!(oas::Oasis, l::Integer, d::Integer; cascade::Bool=false)
+    index = find_layer(oas, l, d)
+    isnothing(index) && error("No layer matching ($l, $d)")
+    removed = oas.layers[index]
+    deleteat!(oas.layers, index)
+    cascade && _cascade_remove_layer!(oas, removed)
+    return oas
+end
+
+function _cascade_remove_layer!(oas::Oasis, l::Layer)
+    for cell in cells(oas)
+        cell isa LazyCell && continue
+        filter!(s -> !(s.layerNumber in l.layerNumber && s.datatypeNumber in l.datatypeNumber), cell.shapes)
+    end
 end
 
 merge_layers(layers::AbstractVector{Layer}, others::AbstractVector{Layer}...) =
@@ -902,4 +1019,25 @@ function update_roots!(oas::Oasis)
         cell._root = should_be_root
     end
     return oas
+end
+
+"""
+    validate_placements(oas)
+
+Check for dangling cell placements, i.e. placements that reference cells not present in `oas`.
+Returns a list of warning strings; an empty list means no issues were found. Beware that
+lazy-loaded cells are skipped in the validation.
+"""
+function validate_placements(oas::Oasis)
+    warnings = String[]
+    known_cells = Set(cell_names(oas))
+    for cell in cells(oas)
+        cell isa LazyCell && continue
+        for p in placements(cell)
+            if p.cellName ∉ known_cells
+                push!(warnings, "Cell $(cell.name) places unknown cell $(p.cellName)")
+            end
+        end
+    end
+    return warnings
 end

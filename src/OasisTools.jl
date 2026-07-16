@@ -6,6 +6,8 @@ import Mmap: mmap
 
 export add_cell!
 export add_layer!
+export add_placement!
+export add_shape!
 export Cell
 export cell_hierarchy
 export cell_names
@@ -30,6 +32,8 @@ export placements
 export plot_cell
 export plot_shape!
 export PointGridRange
+export remove_cell!
+export remove_layer!
 export roots
 export Shape
 export shapes
@@ -37,6 +41,7 @@ export show_cells
 export show_shapes
 export unit
 export update_roots!
+export validate_placements
 
 # Structs
 include("modal_variables.jl")

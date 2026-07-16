@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Layer filtering API.
+- Expanded OASIS editing API.
 
 ## v0.2.0
 
