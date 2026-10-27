@@ -361,7 +361,7 @@ ctrapezoid_vertices_1(w::UInt64, h::UInt64) = [
     Point{2, Int64}(0, 0),      Point{2, Int64}(w - h, 0),
     Point{2, Int64}(w, h),      Point{2, Int64}(0, h)]
 ctrapezoid_vertices_2(w::UInt64, h::UInt64) = [
-    Point{2, Int64}(0, 0),      Point{2, Int64}(0, w),
+    Point{2, Int64}(0, 0),      Point{2, Int64}(w, 0),
     Point{2, Int64}(w, h),      Point{2, Int64}(h, h)]
 ctrapezoid_vertices_3(w::UInt64, h::UInt64) = [
     Point{2, Int64}(h, 0),      Point{2, Int64}(w, 0),
@@ -379,17 +379,17 @@ ctrapezoid_vertices_7(w::UInt64, h::UInt64) = [
     Point{2, Int64}(h, 0),      Point{2, Int64}(w, 0),
     Point{2, Int64}(w - h, h),  Point{2, Int64}(0, h)]
 ctrapezoid_vertices_8(w::UInt64, h::UInt64) = [
-    Point{2, Int64}(0, 0),      Point{2, Int64}(0, w),
+    Point{2, Int64}(0, 0),      Point{2, Int64}(w, 0),
     Point{2, Int64}(w, h - w),  Point{2, Int64}(0, h)]
 ctrapezoid_vertices_9(w::UInt64, h::UInt64) = [
-    Point{2, Int64}(0, 0),      Point{2, Int64}(0, w),
+    Point{2, Int64}(0, 0),      Point{2, Int64}(w, 0),
     Point{2, Int64}(w, h),      Point{2, Int64}(0, h - w)]
 ctrapezoid_vertices_10(w::UInt64, h::UInt64) = [
     Point{2, Int64}(0, 0),      Point{2, Int64}(w, w),
     Point{2, Int64}(w, h),      Point{2, Int64}(0, h)]
 ctrapezoid_vertices_11(w::UInt64, h::UInt64) = [
     Point{2, Int64}(w, 0),      Point{2, Int64}(w, h),
-    Point{2, Int64}(0, h),      Point{2, Int64}(0, h - w)]
+    Point{2, Int64}(0, h),      Point{2, Int64}(0, w)]
 ctrapezoid_vertices_12(w::UInt64, h::UInt64) = [
     Point{2, Int64}(0, 0),      Point{2, Int64}(w, w),
     Point{2, Int64}(w, h - w),  Point{2, Int64}(0, h)]
@@ -472,13 +472,21 @@ function read_ctrapezoid(state::CellParserState)
 
     vertices = ctrapezoid_vertices(width, height, ctrapezoid_type)
     isnothing(vertices) && parse_error(state, "Unknown ctrapezoid type $ctrapezoid_type")
+    # OASIS spec decided that this would be smart.
+    if 0x10 <= ctrapezoid_type <= 0x13 || ctrapezoid_type == 0x19
+        state.mod.geometryH = width
+    elseif 0x14 <= ctrapezoid_type <= 0x15
+        state.mod.geometryW = 2 * height
+    elseif 0x16 <= ctrapezoid_type <= 0x17
+        state.mod.geometryH = 2 * width
+    end
     vertices .+= Point{2, Int64}(x, y)
     if ctrapezoid_type <= 0x0f
         ctrapezoid = Polygon(vertices)
     elseif ctrapezoid_type <= 0x17
         ctrapezoid = Triangle{2, Int64}(vertices...)
     else
-        ctrapezoid = Rect{2, Int64}(vertices...)
+        ctrapezoid = Rect{2, Int64}(vertices[1], vertices[2] - vertices[1])
     end
     shape = Shape(ctrapezoid, layer_number, datatype_number, repetition)
     push!(state.shapes, shape)
