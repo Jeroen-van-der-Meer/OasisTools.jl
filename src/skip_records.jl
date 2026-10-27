@@ -149,7 +149,7 @@ function skip_circle(state::LazyCellParserState)
     bit_is_one(info_byte, 3) && skip_integer(state)
     bit_is_one(info_byte, 4) && skip_integer(state)
     bit_is_one(info_byte, 5) && skip_integer(state)
-    bit_is_one(info_byte, 6) && skip_integer(state)
+    bit_is_one(info_byte, 6) && skip_repetition(state)
 end
 
 function skip_property(state::AbstractParserState)
