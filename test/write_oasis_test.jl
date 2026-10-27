@@ -564,3 +564,51 @@ GC.gc()
         @test bytes[3:5] == [0x00, 0x00, 0x0a] # layer, datatype, width
     end
 end
+
+GC.gc()
+
+@testset "Replace files rather than overwrite them" begin
+    contents(oas) = [(name(c), length(shapes(c)), length(placements(c))) for c in cells(oas)]
+    source = joinpath(@__DIR__, "testdata", "nested.oas")
+    expected = contents(oasisread(source))
+
+    @testset "Source of lazy cells" begin
+        # Overwriting the file in place used to truncate the memory map that the lazy cells read
+        # from, which crashed Julia with a bus error and left the file destroyed.
+        dir = mktempdir()
+        path = joinpath(dir, "nested.oas")
+        cp(source, path)
+        oas = oasisread(path; lazy = true)
+        oasiswrite(path, oas)
+        @test contents(oasisread(path)) == expected
+        # The lazy cells keep reading the original contents.
+        load_all_cells!(oas)
+        @test contents(oas) == expected
+    end
+    if !Sys.iswindows()
+        @testset "Symlinks and permissions" begin
+            dir = mktempdir()
+            path = joinpath(dir, "nested.oas")
+            cp(source, path)
+            chmod(path, 0o640)
+            link = joinpath(dir, "link.oas")
+            symlink(path, link)
+            oasiswrite(link, oasisread(path; lazy = true))
+            @test islink(link)
+            @test filemode(path) & 0o777 == 0o640
+            @test contents(oasisread(path)) == expected
+        end
+    end
+    @testset "Failed write leaves the file untouched" begin
+        dir = mktempdir()
+        path = joinpath(dir, "nested.oas")
+        cp(source, path)
+        original = read(path)
+        oas = Oasis()
+        add_cell!(oas, :TOP)
+        add_placement!(oas[:TOP], :MISSING, Point{2, Int64}(0, 0)) # Fails to write
+        @test_throws KeyError oasiswrite(path, oas)
+        @test read(path) == original
+        @test readdir(dir) == ["nested.oas"] # No temporary file left behind
+    end
+end

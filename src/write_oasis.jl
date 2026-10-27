@@ -11,27 +11,47 @@ Write an [`Oasis`](@ref) object to an OASIS file.
 # Keyword Arguments
 
 - `bufsize::Integer = 16 * 1024 * 1024`: Size of the output buffer in bytes.
+
+The output is first written to a temporary file in the same directory, which then replaces
+`filename`. As a result, a failed write leaves an existing file untouched, and `filename` may
+be a file that [`LazyCell`](@ref) objects were read from: on Linux and macOS, those cells keep
+seeing the original contents. (Windows refuses to replace a file that is still in use.)
 """
 function oasiswrite(filename::AbstractString, oas::Oasis; bufsize = 16 * 1024 * 1024)
-    state = WriterState(oas, filename, bufsize)
-
+    # Resolving symlinks makes us replace the file a link points to rather than the link itself.
+    target = ispath(filename) ? realpath(filename) : abspath(filename)
+    temp = tempname(dirname(target); cleanup = false)
     try
-        write_bytes(state, MAGIC_BYTES)
-        write_start(state, unit(oas))
-        write_roots(state)
-        write_cblock(state) do cblock_state
-            write_propname(cblock_state, :S_TOP_CELL)
-            construct_and_write_cellname_references(cblock_state)
-            write_layers(cblock_state)
+        state = WriterState(oas, temp, bufsize)
+        try
+            write_oasis(state, oas)
+        finally
+            close(state.io)
         end
-        write_cells(state)
-        write_end(state)
-
-        # Write remaining bytes in buffer.
-        write(state.io, @view state.buf[1:(state.pos - 1)])
-    finally
-        close(state.io)
+        # Keep the permissions of the file we're replacing.
+        isfile(target) && chmod(temp, filemode(target) & 0o7777)
+        mv(temp, target; force = true)
+    catch
+        rm(temp; force = true)
+        rethrow()
     end
+    return nothing
+end
+
+function write_oasis(state::WriterState, oas::Oasis)
+    write_bytes(state, MAGIC_BYTES)
+    write_start(state, unit(oas))
+    write_roots(state)
+    write_cblock(state) do cblock_state
+        write_propname(cblock_state, :S_TOP_CELL)
+        construct_and_write_cellname_references(cblock_state)
+        write_layers(cblock_state)
+    end
+    write_cells(state)
+    write_end(state)
+
+    # Write remaining bytes in buffer.
+    write(state.io, @view state.buf[1:(state.pos - 1)])
 end
 
 function write_roots(state::WriterState)
