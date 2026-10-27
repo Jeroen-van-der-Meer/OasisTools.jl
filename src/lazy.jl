@@ -3,11 +3,24 @@
 
 Load all [`LazyCell`](@ref) objects in `oas` into memory, replacing them with [`Cell`](@ref)
 objects. Equivalent to calling [`load_cell!`](@ref) on every cell.
+
+Cells are parsed in parallel when Julia is started with more than one thread. The reference
+tables a `LazyCell` carries are only read during parsing, so this is safe.
 """
 function load_all_cells!(oas::Oasis)
-    for (i, cell) in enumerate(cells(oas))
-        load_cell!(oas, cell, i)
+    cs = cells(oas)
+    if Threads.nthreads() > 1
+        Threads.@threads for i in eachindex(cs)
+            cell = cs[i]
+            cell isa LazyCell && (cs[i] = load_cell(cell))
+        end
+    else
+        for i in eachindex(cs)
+            cell = cs[i]
+            cell isa LazyCell && (cs[i] = load_cell(cell))
+        end
     end
+    return oas
 end
 
 load_cell!(oas, cell_name::AbstractString) = load_cell!(oas, Symbol(cell_name))
@@ -83,6 +96,6 @@ function load_cell(lazy_cell::LazyCell)
         record_type = read_byte(state)
         read_record(record_type, state)
     end
-    cell = Cell(lazy_cell.name, state.shapes, state.placements, lazy_cell.unit, lazy_cell._root)
+    cell = Cell(lazy_cell.name, state.shapes, state.placements, lazy_cell._root)
     return cell
 end

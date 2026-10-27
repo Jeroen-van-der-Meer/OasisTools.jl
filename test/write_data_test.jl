@@ -60,7 +60,19 @@ end
         write_and_read(OasisTools.write_g_delta, OasisTools.read_g_delta, Point{2, Int64}(-46, -987))
     end
     @testset "Write repetitions" begin
-        write_and_read(OasisTools.write_repetition, OasisTools.read_repetition, Point{2, Int64}[]; reader_type = CellParserState)
+        # A repetition covers at least two instances; absence is expressed with `nothing`.
+        @test_throws ArgumentError OasisTools.write_repetition(
+            OasisTools.WriterState("temp", 1024), Point{2, Int64}[]
+        )
+        # Writing the same repetition twice falls back on the modal variable the second time.
+        let rep = Point{2, Int64}[(0, 0), (10, 0), (20, 0)]
+            state = OasisTools.WriterState("temp", 1024)
+            OasisTools.write_repetition(state, rep)
+            nbytes = state.pos - 1
+            OasisTools.write_repetition(state, rep)
+            @test state.pos - 1 == nbytes + 1
+            @test state.buf[nbytes + 1] == 0x00
+        end
         write_and_read(OasisTools.write_repetition, OasisTools.read_repetition, PointGridRange((0, 0), 130, 129, (1, 0), (0, 1)); reader_type = CellParserState)
         write_and_read(OasisTools.write_repetition, OasisTools.read_repetition, PointGridRange((0, 0), 130, 1, (127, 0), (1, 1)); reader_type = CellParserState)
         write_and_read(OasisTools.write_repetition, OasisTools.read_repetition, Point{2, Int64}[(0, 0), (127, 0), (128, 0), (255, 0)]; reader_type = CellParserState)

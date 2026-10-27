@@ -121,6 +121,7 @@ function write_repetition_type_10(state, value::Vector{Point{2, Int64}})
 end
 
 function write_repetition(state, value::PointGridRange)
+    check_repetition_length(length(value))
     if value == state.mod.repetition
         write_repetition_type_0(state)
     elseif (value.nstepx == 1) || (value.nstepy == 1)
@@ -133,12 +134,21 @@ function write_repetition(state, value::PointGridRange)
 end
 
 function write_repetition(state, value::Vector{Point{2, Int64}})
+    check_repetition_length(length(value))
     if value == state.mod.repetition
         write_repetition_type_0(state)
     else
         write_repetition_type_10(state, value)
         state.mod.repetition = value
     end
+end
+
+# Every OASIS repetition type encodes two or more instances, so there is no way to write a
+# shorter one. Use `nothing` to express the absence of a repetition.
+function check_repetition_length(nrep::Integer)
+    nrep >= 2 || throw(ArgumentError(
+        "A repetition must cover at least two instances; got $nrep"
+    ))
 end
 
 function write_point_list(state, points::Vector{Point{2, Int64}})

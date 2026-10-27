@@ -1,9 +1,9 @@
 function rui(state) # read_unsigned_integer; using shorthand since this function is used often
-    output = 0
+    output = UInt64(0)
     shift = 0
     while true
         b = read_byte(state)
-        output += UInt64(b & 0x7F) << shift
+        output |= UInt64(b & 0x7F) << shift
         b & 0x80 == 0 && break
         shift += 7
     end
@@ -21,8 +21,9 @@ function read_signed_integer(state)
     return unsigned_to_signed(unsigned_output)
 end
 
-read_positive_whole_number(state) = signed(rui(state))
-read_negative_whole_number(state) = -signed(rui(state))
+# Every branch returns Float64 so that `read_real` is type stable.
+read_positive_whole_number(state) = Float64(rui(state))
+read_negative_whole_number(state) = -Float64(rui(state))
 read_positive_reciprocal(state) = 1 / rui(state)
 read_negative_reciprocal(state) = -1 / rui(state)
 read_positive_ratio(state) = read_positive_whole_number(state) / read_positive_whole_number(state)

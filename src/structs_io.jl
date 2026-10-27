@@ -23,8 +23,10 @@ parse_error(state, message::AbstractString) = throw(OasisParseError(message, sta
 
 abstract type AbstractParserState end
 
-mutable struct FileParserState <: AbstractParserState
-    const buf::Vector{UInt8}
+# The buffer is a type parameter so that a state can wrap a view into an mmap without the
+# implicit `convert` to `Vector{UInt8}` copying the whole range.
+mutable struct FileParserState{B <: AbstractVector{UInt8}} <: AbstractParserState
+    const buf::B
     pos::Int64
     const cells::Vector{PreprocessedCell}
     const layers::Vector{Layer}
@@ -38,52 +40,52 @@ mutable struct FileParserState <: AbstractParserState
 end
 
 function FileParserState(buf::AbstractVector{UInt8})
-    return FileParserState(
-        buf, 1, [], [],
+    return FileParserState{typeof(buf)}(
+        buf, 1, PreprocessedCell[], Layer[],
         Dict(), Dict(), Dict(), Dict(),
-        [], Metadata(), FileModalVariables()
+        Int64[], Metadata(), FileModalVariables()
     )
 end
 
-mutable struct CellParserState <: AbstractParserState
-    const buf::Vector{UInt8}
+mutable struct CellParserState{B <: AbstractVector{UInt8}} <: AbstractParserState
+    const buf::B
     pos::Int64
     const cellnameReferences::Dict{UInt64, Symbol}
     const textstringReferences::Dict{UInt64, Symbol}
-    const shapes::Vector{Shape}
+    const shapes::ShapeStore
     const placements::Vector{CellPlacement}
     const mod::ModalVariables
 end
 
 function CellParserState(cell::LazyCell)
-    return CellParserState(
+    return CellParserState{typeof(cell.bytes)}(
         cell.bytes, 1,
         cell.cellnameReferences, cell.textstringReferences,
-        [], [],
+        ShapeStore(), CellPlacement[],
         ModalVariables()
     )
 end
 
 function CellParserState(buf::AbstractVector{UInt8})
-    return CellParserState(
+    return CellParserState{typeof(buf)}(
         buf, 1,
         Dict(), Dict(),
-        [], [],
+        ShapeStore(), CellPlacement[],
         ModalVariables()
     )
 end
 
-mutable struct LazyCellParserState <: AbstractParserState
-    const buf::Vector{UInt8}
+mutable struct LazyCellParserState{B <: AbstractVector{UInt8}} <: AbstractParserState
+    const buf::B
     pos::Int64
 end
 
 function LazyCellParserState(state::FileParserState)
-    return LazyCellParserState(state.buf, state.pos)
+    return LazyCellParserState{typeof(state.buf)}(state.buf, state.pos)
 end
 
 new_state(state::FileParserState, new_buf::AbstractVector{UInt8}) =
-    FileParserState(
+    FileParserState{typeof(new_buf)}(
         new_buf, 1,
         state.cells, state.layers,
         state.cellnameReferences, state.textstringReferences,
@@ -94,7 +96,7 @@ new_state(state::FileParserState, new_buf::AbstractVector{UInt8}) =
     )
 
 new_state(state::CellParserState, new_buf::AbstractVector{UInt8}) =
-    CellParserState(
+    CellParserState{typeof(new_buf)}(
         new_buf, 1,
         state.cellnameReferences, state.textstringReferences,
         state.shapes, state.placements, 
@@ -102,7 +104,7 @@ new_state(state::CellParserState, new_buf::AbstractVector{UInt8}) =
     )
 
 new_state(::LazyCellParserState, new_buf::AbstractVector{UInt8}) =
-    LazyCellParserState(new_buf, 1)
+    LazyCellParserState{typeof(new_buf)}(new_buf, 1)
 
 mutable struct WriterState
     const io::IO # File we're saving to.

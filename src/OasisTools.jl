@@ -38,6 +38,7 @@ export remove_layer!
 export roots
 export Shape
 export shapes
+export ShapeStore
 export show_cells
 export show_shapes
 export unit
@@ -45,8 +46,8 @@ export update_roots!
 export validate_placements
 
 # Structs
-include("modal_variables.jl")
 include("structs_data.jl")
+include("modal_variables.jl")
 include("structs_oasis.jl")
 include("structs_io.jl")
 

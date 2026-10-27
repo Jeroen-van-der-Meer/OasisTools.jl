@@ -34,7 +34,7 @@ When you call `oasisread(filename; lazy=true)`, the file is memory-mapped and th
 
 - A **view** (`SubArray`) into the memory-mapped file buffer, pointing to the raw bytes of the CELL record body. No bytes are copied.
 - The file-level **name reference dictionaries** (cell names and text strings), so the `LazyCell` is self-contained and can be decoded independently at any later point.
-- The cell **name**, **unit**, and **root status**.
+- The cell **name** and **root status**. The unit length is a file-level property, stored on the [`Oasis`](@ref) object rather than per cell.
 
 Because no geometry is decoded and no cell data is copied, opening a file in lazy mode is fast and uses minimal memory beyond the memory-mapped region itself.
 

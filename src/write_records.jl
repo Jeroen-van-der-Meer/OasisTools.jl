@@ -49,7 +49,14 @@ function write_cell(state::WriterState, cell::Cell)
             write_placement(state, placement)
         end
     end
-    for shape in shapes(cell)
+    # Writing a kind at a time keeps the modal variables stable across each group.
+    for group in shape_vectors(shapes(cell))
+        write_shape_group(state, group)
+    end
+end
+
+function write_shape_group(state::WriterState, group::AbstractVector{<:Shape})
+    for shape in group
         write_shape(state, shape)
     end
 end

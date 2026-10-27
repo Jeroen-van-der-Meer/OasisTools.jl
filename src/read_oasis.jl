@@ -49,7 +49,7 @@ function oasisread(filename::AbstractString; lazy::Bool = false)
     end
 
     lazy_cells = process_cells(state)
-    oas = Oasis(lazy_cells, state.layers)
+    oas = Oasis(lazy_cells, state.layers; unit = state.metadata.unit)
     
     if !lazy
         # In case of non-lazy loading, parse each of the lazy-loaded cells and replace them with
@@ -78,7 +78,6 @@ function process_cells(state::FileParserState)
             preprocessed_cell.bytes,
             state.cellnameReferences,
             state.textstringReferences,
-            state.metadata.unit,
             is_root
         )
     end

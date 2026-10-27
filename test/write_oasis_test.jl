@@ -71,7 +71,7 @@
         cell = OasisTools.LazyCell(
             :TOP, view(bytes, 1:length(bytes)),
             Dict{UInt64, Symbol}(), Dict{UInt64, Symbol}(),
-            1000.0, true
+            true
         )
 
         state = OasisTools.WriterState("temp", 1024)
@@ -171,24 +171,25 @@ end
         top_cell = oas["TOP"]
         nplacement = length(top_cell.placements)
         @test nplacement == 0
-        shapes = [s.shape for s in top_cell.shapes]
-        @test length(shapes) == 6 # Four paths and two circles for the rounded path
-        path_1 = shapes[1]
+        paths = [s.shape for s in top_cell.shapes.paths]
+        circles = [s.shape for s in top_cell.shapes.circles]
+        @test length(top_cell.shapes) == 6 # Four paths and two circles for the rounded path
+        path_1 = paths[1]
         @test path_1.points == Point{2, Int64}[(-508, 268), (-253, 22), (-342, 190), (-157, 176)]
         @test path_1.width == 100
-        path_2 = shapes[2]
+        path_2 = paths[2]
         @test path_2.points == Point{2, Int64}[(-263, 431), (-116, 420), (-228, 315), (-182, 482)]
         @test path_2.width == 50
-        path_3 = shapes[3]
+        path_3 = paths[3]
         @test path_3.points == Point{2, Int64}[(-343, 273), (-386, 294), (-351, 303)]
         @test path_3.width == 10
-        start_circle = shapes[4]
+        start_circle = circles[1]
         @test start_circle.center == Point{2, Int64}(-343, 273)
         @test start_circle.r == 5
-        end_circle = shapes[5]
+        end_circle = circles[2]
         @test end_circle.center == Point{2, Int64}(-351, 303)
         @test end_circle.r == 5
-        path_4 = shapes[6]
+        path_4 = paths[4]
         @test path_4.points == Point{2, Int64}[(-257, 236), (-255, 238), (-254, 237)]
         @test path_4.width == 2
     end
@@ -238,33 +239,35 @@ end
         oas = oasisread("temp")
         cell = oas["noname"]
         @test length(cell.shapes) == 7
-        @test cell.shapes[1] isa Shape{OasisTools.Text}
-        polygon1 = cell.shapes[2]
+        @test length(cell.shapes.texts) == 1
+        polys = cell.shapes.polygons
+        @test length(polys) == 6
+        polygon1 = polys[1]
         @test polygon1.shape.exterior == [
             Point{2, Int64}(28810, -17702), Point{2, Int64}(28813, -17703),
             Point{2, Int64}(28813, -17698), Point{2, Int64}(28810, -17696)
         ]
-        polygon2 = cell.shapes[3]
+        polygon2 = polys[2]
         @test polygon2.shape.exterior == [
             Point{2, Int64}(28796, -17701), Point{2, Int64}(28796, -17705),
             Point{2, Int64}(28800, -17705), Point{2, Int64}(28803, -17701)
         ]
-        polygon3 = cell.shapes[4]
+        polygon3 = polys[3]
         @test polygon3.shape.exterior == [
             Point{2, Int64}(28805, -17705), Point{2, Int64}(28807, -17703),
             Point{2, Int64}(28807, -17698), Point{2, Int64}(28805, -17700)
         ]
-        polygon4 = cell.shapes[5]
+        polygon4 = polys[4]
         @test polygon4.shape.exterior == [
             Point{2, Int64}(28800, -17707), Point{2, Int64}(28799, -17710),
             Point{2, Int64}(28806, -17710), Point{2, Int64}(28805, -17707)
         ]
-        polygon5 = cell.shapes[6]
+        polygon5 = polys[5]
         @test polygon5.shape.exterior == [
             Point{2, Int64}(28809, -17704), Point{2, Int64}(28810, -17706),
             Point{2, Int64}(28814, -17706), Point{2, Int64}(28813, -17704)
         ]
-        polygon6 = cell.shapes[7]
+        polygon6 = polys[6]
         @test polygon6.shape.exterior == [
             Point{2, Int64}(28794, -17696), Point{2, Int64}(28797, -17699),
             Point{2, Int64}(28801, -17699), Point{2, Int64}(28802, -17696)
@@ -311,7 +314,7 @@ GC.gc()
         oas = Oasis()
         rect = Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(10, 10))
         shape = Shape(rect, UInt64(1), UInt64(0), nothing)
-        cell = Cell(:CBLOCK_TEST, [shape], CellPlacement[], 1000.0, true)
+        cell = Cell(:CBLOCK_TEST, [shape], CellPlacement[], true)
         add_cell!(oas, cell)
         add_layer!(oas, Layer(:M1, 1, 0))
         oasiswrite("temp", oas)
@@ -336,9 +339,9 @@ GC.gc()
         rect2 = Rect{2, Int64}(Point{2, Int64}(10, 10), Point{2, Int64}(20, 20))
         s1 = Shape(rect1, UInt64(1), UInt64(0), nothing)
         s2 = Shape(rect2, UInt64(2), UInt64(1), nothing)
-        cell1 = Cell(:CELL_A, [s1], CellPlacement[], 1000.0, true)
+        cell1 = Cell(:CELL_A, [s1], CellPlacement[], true)
         placement = CellPlacement(:CELL_A, Point{2, Int64}(100, 200), 0.0, 1.0, false, nothing)
-        cell2 = Cell(:CELL_B, [s2], [placement], 1000.0, true)
+        cell2 = Cell(:CELL_B, [s2], [placement], true)
         add_cell!(oas, cell1)
         add_cell!(oas, cell2)
         add_layer!(oas, Layer(:L1, 1, 0))
@@ -365,7 +368,7 @@ GC.gc()
         ]
         polygon = Polygon(pts)
         shape = Shape(polygon, UInt64(1), UInt64(0), nothing)
-        cell = Cell(:POLY, [shape], CellPlacement[], 1000.0, true)
+        cell = Cell(:POLY, [shape], CellPlacement[], true)
         add_cell!(oas, cell)
         add_layer!(oas, Layer(:M1, 1, 0))
         oasiswrite("temp", oas)
@@ -384,7 +387,7 @@ GC.gc()
         oas = Oasis()
         rect = Rect{2, Int64}(Point{2, Int64}(10, 20), Point{2, Int64}(30, 40))
         shape = Shape(rect, UInt64(2), UInt64(1), nothing)
-        cell = Cell(:RECT, [shape], CellPlacement[], 1000.0, true)
+        cell = Cell(:RECT, [shape], CellPlacement[], true)
         add_cell!(oas, cell)
         oasiswrite("temp", oas)
         oas2 = oasisread("temp")
@@ -400,7 +403,7 @@ GC.gc()
         oas = Oasis()
         rect = Rect{2, Int64}(Point{2, Int64}(5, 5), Point{2, Int64}(50, 50))
         shape = Shape(rect, UInt64(1), UInt64(0), nothing)
-        cell = Cell(:SQR, [shape], CellPlacement[], 1000.0, true)
+        cell = Cell(:SQR, [shape], CellPlacement[], true)
         add_cell!(oas, cell)
         oasiswrite("temp", oas)
         oas2 = oasisread("temp")
@@ -413,7 +416,7 @@ GC.gc()
         oas = Oasis()
         circle = HyperSphere{2, Int64}(Point{2, Int64}(100, 200), 50)
         shape = Shape(circle, UInt64(3), UInt64(0), nothing)
-        cell = Cell(:CIRC, [shape], CellPlacement[], 1000.0, true)
+        cell = Cell(:CIRC, [shape], CellPlacement[], true)
         add_cell!(oas, cell)
         oasiswrite("temp", oas)
         oas2 = oasisread("temp")
@@ -431,7 +434,7 @@ GC.gc()
         ]
         path = OasisTools.Path(pts, Int64(20))
         shape = Shape(path, UInt64(1), UInt64(0), nothing)
-        cell = Cell(:PATH, [shape], CellPlacement[], 1000.0, true)
+        cell = Cell(:PATH, [shape], CellPlacement[], true)
         add_cell!(oas, cell)
         oasiswrite("temp", oas)
         oas2 = oasisread("temp")
@@ -445,7 +448,7 @@ GC.gc()
         oas = Oasis()
         text = OasisTools.Text(:hello, Point{2, Int64}(50, 60), nothing)
         shape = Shape(text, UInt64(10), UInt64(0), nothing)
-        cell = Cell(:TXT, [shape], CellPlacement[], 1000.0, true)
+        cell = Cell(:TXT, [shape], CellPlacement[], true)
         add_cell!(oas, cell)
         oasiswrite("temp", oas)
         oas2 = oasisread("temp")
@@ -461,7 +464,7 @@ GC.gc()
         rect2 = Rect{2, Int64}(Point{2, Int64}(20, 20), Point{2, Int64}(30, 30))
         s1 = Shape(rect1, UInt64(1), UInt64(0), nothing)
         s2 = Shape(rect2, UInt64(2), UInt64(1), nothing)
-        cell = Cell(:MULTI, [s1, s2], CellPlacement[], 1000.0, true)
+        cell = Cell(:MULTI, [s1, s2], CellPlacement[], true)
         add_cell!(oas, cell)
         oasiswrite("temp", oas)
         oas2 = oasisread("temp")
@@ -477,7 +480,7 @@ GC.gc()
         rect = Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(5, 5))
         rep = [Point{2, Int64}(0, 0), Point{2, Int64}(10, 0), Point{2, Int64}(20, 0)]
         shape = Shape(rect, UInt64(1), UInt64(0), rep)
-        cell = Cell(:REP, [shape], CellPlacement[], 1000.0, true)
+        cell = Cell(:REP, [shape], CellPlacement[], true)
         add_cell!(oas, cell)
         oasiswrite("temp", oas)
         oas2 = oasisread("temp")
@@ -489,9 +492,9 @@ GC.gc()
         oas = Oasis()
         rect = Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(10, 10))
         shape = Shape(rect, UInt64(1), UInt64(0), nothing)
-        inner = Cell(:INNER, Shape[], CellPlacement[], 1000.0, false)
+        inner = Cell(:INNER, Shape[], CellPlacement[], false)
         placement = CellPlacement(:INNER, Point{2, Int64}(50, 50), 0.0, 1.0, false, nothing)
-        outer = Cell(:OUTER, [shape], [placement], 1000.0, true)
+        outer = Cell(:OUTER, [shape], [placement], true)
         add_cell!(oas, inner)
         add_cell!(oas, outer)
         oasiswrite("temp", oas)
@@ -511,7 +514,7 @@ GC.gc()
         ]
         polygon = Polygon(pts)
         shape = Shape(polygon, UInt64(1), UInt64(0), nothing)
-        cell = Cell(:NEG, [shape], CellPlacement[], 1000.0, true)
+        cell = Cell(:NEG, [shape], CellPlacement[], true)
         add_cell!(oas, cell)
         oasiswrite("temp", oas)
         oas2 = oasisread("temp")

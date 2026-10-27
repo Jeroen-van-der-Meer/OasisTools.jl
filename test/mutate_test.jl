@@ -3,7 +3,7 @@
         oas = Oasis()
         add_cell!(oas, :NEW)
         @test oas[:NEW] isa Cell
-        @test OasisTools.unit(oas[:NEW]) == OasisTools.DEFAULT_UNIT
+        @test OasisTools.unit(oas) == OasisTools.DEFAULT_UNIT
         @test_throws Exception add_cell!(oas, :NEW)
     end
     @testset "Add layers" begin

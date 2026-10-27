@@ -100,28 +100,32 @@ end
         top_cell = oas["TOP"]
         nplacement = length(top_cell.placements)
         @test nplacement == 0
-        shps = [s.shape for s in top_cell.shapes]
-        @test length(shps) == 6 # Four paths and two circles for the rounded path
-        path_1 = shps[1]
+        # Shapes are stored grouped by kind, so reach for the groups rather than an index.
+        paths = [s.shape for s in top_cell.shapes.paths]
+        circles = [s.shape for s in top_cell.shapes.circles]
+        @test length(top_cell.shapes) == 6 # Four paths and two circles for the rounded path
+        @test length(paths) == 4
+        @test length(circles) == 2
+        path_1 = paths[1]
         @test path_1.points == Point{2, Int64}[(-508, 268), (-253, 22), (-342, 190), (-157, 176)]
         @test path_1.width == 100
-        path_2 = shps[2]
+        path_2 = paths[2]
         @test path_2.points == Point{2, Int64}[(-263, 431), (-116, 420), (-228, 315), (-182, 482)]
         @test path_2.width == 50
         # Third path is a rounded path which klayout saves using CIRCLE records at both ends.
-        path_3 = shps[3]
+        path_3 = paths[3]
         @test path_3.points == Point{2, Int64}[(-343, 273), (-386, 294), (-351, 303)]
         @test path_3.width == 10
-        start_circle = shps[4]
+        start_circle = circles[1]
         @test start_circle.center == Point{2, Int64}(-343, 273)
         @test start_circle.r == 5
-        end_circle = shps[5]
+        end_circle = circles[2]
         @test end_circle.center == Point{2, Int64}(-351, 303)
         @test end_circle.r == 5
         # Fourth path is subject to change; due to the nonzero starting offset, its starting
         # point is actually a fraction of the database unit. As it stands, a rounding takes
         # place.
-        path_4 = shps[6]
+        path_4 = paths[4]
         @test path_4.points == Point{2, Int64}[(-257, 236), (-255, 238), (-254, 237)]
         @test path_4.width == 2
     end
@@ -187,33 +191,35 @@ TOP
         oas = oasisread(filepath)
         cell = oas["noname"] # This is what LayoutEditor calls your cell if you don't name it.
         @test length(cell.shapes) == 7 # Six polygons and the free-version disclaimer.
-        @test cell.shapes[1] isa Shape{OasisTools.Text}
-        polygon1 = cell.shapes[2]
+        @test length(cell.shapes.texts) == 1
+        polys = cell.shapes.polygons
+        @test length(polys) == 6
+        polygon1 = polys[1]
         @test polygon1.shape.exterior == [
             Point{2, Int64}(28810, -17702), Point{2, Int64}(28813, -17703),
             Point{2, Int64}(28813, -17698), Point{2, Int64}(28810, -17696)
         ]
-        polygon2 = cell.shapes[3]
+        polygon2 = polys[2]
         @test polygon2.shape.exterior == [
             Point{2, Int64}(28796, -17701), Point{2, Int64}(28796, -17705),
             Point{2, Int64}(28800, -17705), Point{2, Int64}(28803, -17701)
         ]
-        polygon3 = cell.shapes[4]
+        polygon3 = polys[3]
         @test polygon3.shape.exterior == [
             Point{2, Int64}(28805, -17705), Point{2, Int64}(28807, -17703),
             Point{2, Int64}(28807, -17698), Point{2, Int64}(28805, -17700)
         ]
-        polygon4 = cell.shapes[5]
+        polygon4 = polys[4]
         @test polygon4.shape.exterior == [
             Point{2, Int64}(28800, -17707), Point{2, Int64}(28799, -17710),
             Point{2, Int64}(28806, -17710), Point{2, Int64}(28805, -17707)
         ]
-        polygon5 = cell.shapes[6]
+        polygon5 = polys[5]
         @test polygon5.shape.exterior == [
             Point{2, Int64}(28809, -17704), Point{2, Int64}(28810, -17706),
             Point{2, Int64}(28814, -17706), Point{2, Int64}(28813, -17704)
         ]
-        polygon6 = cell.shapes[7]
+        polygon6 = polys[6]
         @test polygon6.shape.exterior == [
             Point{2, Int64}(28794, -17696), Point{2, Int64}(28797, -17699),
             Point{2, Int64}(28801, -17699), Point{2, Int64}(28802, -17696)

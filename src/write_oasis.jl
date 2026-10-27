@@ -13,15 +13,11 @@ Write an [`Oasis`](@ref) object to an OASIS file.
 - `bufsize::Integer = 16 * 1024 * 1024`: Size of the output buffer in bytes.
 """
 function oasiswrite(filename::AbstractString, oas::Oasis; bufsize = 16 * 1024 * 1024)
-    units = unique(cell.unit for cell in cells(oas))
-    @assert length(units) == 1 "Writing of cells with incompatible unit length not supported yet"
-    unit = first(units)
-
     state = WriterState(oas, filename, bufsize)
 
     try
         write_bytes(state, MAGIC_BYTES)
-        write_start(state, unit)
+        write_start(state, unit(oas))
         write_roots(state)
         write_cblock(state) do cblock_state
             write_propname(cblock_state, :S_TOP_CELL)

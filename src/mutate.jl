@@ -1,20 +1,19 @@
-function add_cell!(oas::Oasis, new_cell; unit::Real = unit(oas))
-    add_cell!(cells(oas), new_cell; unit = unit)
-    return oas
+function add_cell!(oas::Oasis, new_cell::Union{LazyCell, Cell})
+    isnothing(find_cell(oas, new_cell.name)) ||
+        error("Cell with name $(new_cell.name) already exists")
+    return push_cell!(oas, new_cell)
 end
 
-add_cell!(
-    cells::AbstractVector{Union{LazyCell, Cell}},
-    cell_name::AbstractString;
-    unit = unit(cells)
-) = add_cell!(cells, Symbol(cell_name); unit = unit)
+add_cell!(oas::Oasis, cell_name::AbstractString) = add_cell!(oas, Symbol(cell_name))
 
-function add_cell!(
-    cells::AbstractVector{Union{LazyCell, Cell}},
-    cell_name::Symbol;
-    unit::Real = unit(cells)
-)
-    add_cell!(cells, Cell(cell_name, [], [], unit, true))
+add_cell!(oas::Oasis, cell_name::Symbol) =
+    add_cell!(oas, Cell(cell_name, ShapeStore(), CellPlacement[], true))
+
+add_cell!(cells::AbstractVector{Union{LazyCell, Cell}}, cell_name::AbstractString) =
+    add_cell!(cells, Symbol(cell_name))
+
+function add_cell!(cells::AbstractVector{Union{LazyCell, Cell}}, cell_name::Symbol)
+    add_cell!(cells, Cell(cell_name, ShapeStore(), CellPlacement[], true))
     return cells
 end
 
@@ -51,8 +50,7 @@ function add_cell!(
     cells::AbstractVector{Union{LazyCell, Cell}},
     new_cell::Union{LazyCell, Cell};
     kwargs...
-)
-    if isnothing(find_cell(cells, new_cell.name))
+)    if isnothing(find_cell(cells, new_cell.name))
         push!(cells, new_cell)
     else
         error("Cell with name $(new_cell.name) already exists")
@@ -135,6 +133,7 @@ function remove_cell!(oas::Oasis, cell_name::Symbol; cascade::Bool = false)
     index = find_cell(oas, cell_name)
     isnothing(index) && error("No cell with name $cell_name")
     deleteat!(oas.cells, index)
+    reindex_cells!(oas)
     if cascade
         for cell in cells(oas)
             cell isa LazyCell && continue
@@ -179,6 +178,17 @@ function merge_cells!(
         @warn "Duplicate cell name $(new_cell.name) detected"
     end
     return cells
+end
+
+function merge_cells!(oas::Oasis, other::Oasis)
+    for new_cell in cells(other)
+        if isnothing(find_cell(oas, new_cell.name))
+            push_cell!(oas, new_cell)
+        else
+            @warn "Duplicate cell name $(new_cell.name) detected"
+        end
+    end
+    return oas
 end
 
 """
@@ -316,7 +326,7 @@ function merge_layers!(layers::AbstractVector{Layer}, new_layer::Layer)
     return layers
 end
 
-Base.copy(oas::Oasis) = Oasis(copy(oas.cells), copy(oas.layers))
+Base.copy(oas::Oasis) = Oasis(copy(oas.cells), copy(oas.layers); unit = oas.unit)
 
 """
     merge_oases(oas...)
@@ -364,7 +374,10 @@ function merge_oases!(oasis::Oasis, others::Oasis...)
 end
 
 function merge_oases!(oasis::Oasis, other::Oasis)
-    merge_cells!(oasis.cells, other.cells)
+    if oasis.unit != other.unit
+        @warn "Merging OASIS objects with different unit lengths; keeping $(oasis.unit)"
+    end
+    merge_cells!(oasis, other)
     merge_layers!(oasis.layers, other.layers)
     return oasis
 end

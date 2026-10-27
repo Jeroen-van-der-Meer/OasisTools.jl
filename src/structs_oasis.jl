@@ -261,15 +261,97 @@ end
 abstract type AbstractCell end
 
 """
+    ShapeStore()
+    ShapeStore(shapes)
+
+Container holding the shapes of a [`Cell`](@ref), with one densely typed vector per geometry
+kind.
+
+Behaves as an `AbstractVector{Shape}`, so iterating, indexing and `length` all walk the groups
+in order (rectangles, polygons, triangles, paths, circles, texts). Note that this means shapes
+come out grouped by kind rather than in the order they appeared in the file; OASIS does not
+assign meaning to the ordering of shapes within a cell.
+
+Indexing boxes each element, because the element type has to widen to `Shape`. Reach for the
+typed fields directly when that matters:
+
+```julia
+for shape in cell.shapes.rectangles
+    # shape::Shape{Rect{2, Int64}}
+end
+```
+"""
+struct ShapeStore <: AbstractVector{Shape}
+    rectangles::Vector{Shape{Rect{2, Int64}}}
+    polygons::Vector{Shape{Polygon{2, Int64}}}
+    triangles::Vector{Shape{Triangle{2, Int64}}}
+    paths::Vector{Shape{Path{2, Int64}}}
+    circles::Vector{Shape{Circle{Int64}}}
+    texts::Vector{Shape{Text}}
+end
+
+ShapeStore() = ShapeStore(
+    Shape{Rect{2, Int64}}[], Shape{Polygon{2, Int64}}[], Shape{Triangle{2, Int64}}[],
+    Shape{Path{2, Int64}}[], Shape{Circle{Int64}}[], Shape{Text}[]
+)
+
+function ShapeStore(shapes)
+    store = ShapeStore()
+    for shape in shapes
+        push!(store, shape)
+    end
+    return store
+end
+
+shape_vectors(s::ShapeStore) =
+    (s.rectangles, s.polygons, s.triangles, s.paths, s.circles, s.texts)
+
+Base.length(s::ShapeStore) = sum(length, shape_vectors(s))
+Base.size(s::ShapeStore) = (length(s),)
+Base.IndexStyle(::Type{ShapeStore}) = IndexLinear()
+
+function Base.getindex(s::ShapeStore, i::Integer)
+    @boundscheck checkbounds(s, i)
+    offset = Int(i)
+    for v in shape_vectors(s)
+        n = length(v)
+        offset <= n && return @inbounds v[offset]
+        offset -= n
+    end
+    throw(BoundsError(s, i))
+end
+
+Base.push!(s::ShapeStore, shape::Shape{Rect{2, Int64}}) = (push!(s.rectangles, shape); s)
+Base.push!(s::ShapeStore, shape::Shape{Polygon{2, Int64}}) = (push!(s.polygons, shape); s)
+Base.push!(s::ShapeStore, shape::Shape{Triangle{2, Int64}}) = (push!(s.triangles, shape); s)
+Base.push!(s::ShapeStore, shape::Shape{Path{2, Int64}}) = (push!(s.paths, shape); s)
+Base.push!(s::ShapeStore, shape::Shape{Circle{Int64}}) = (push!(s.circles, shape); s)
+Base.push!(s::ShapeStore, shape::Shape{Text}) = (push!(s.texts, shape); s)
+
+function Base.filter!(f, s::ShapeStore)
+    for v in shape_vectors(s)
+        filter!(f, v)
+    end
+    return s
+end
+
+function Base.empty!(s::ShapeStore)
+    for v in shape_vectors(s)
+        empty!(v)
+    end
+    return s
+end
+
+Base.copy(s::ShapeStore) = ShapeStore(map(copy, shape_vectors(s))...)
+
+"""
     struct Cell
 
 # Properties
 
 - `name::Symbol`: Name of the cell.
-- `shapes::Vector{Shape}`: Lists the shapes, such as polygons and lines, that are contained in
-  the cell.
+- `shapes::ShapeStore`: The shapes, such as polygons and lines, contained in the cell.
 - `placements::Vector{CellPlacement}`: Lists all other cells that are placed in this cell.
-- `unit::Float64`: Unit length.
 - `_root::Bool`: Indicates whether the cell is a root cell (i.e., isn't contained in any other
   cell).
 
@@ -277,13 +359,19 @@ See also [`LazyCell`](@ref).
 """
 mutable struct Cell <: AbstractCell
     const name::Symbol
-    const shapes::Vector{Shape}
+    const shapes::ShapeStore
     const placements::Vector{CellPlacement}
-    const unit::Float64
     _root::Bool
 end
 
 Cell(name::AbstractString, args...) = Cell(Symbol(name), args...)
+
+Cell(
+    name::Symbol,
+    shapes::Vector{<:Shape},
+    placements::AbstractVector{CellPlacement},
+    root::Bool
+) = Cell(name, ShapeStore(shapes), placements, root)
 
 """
     shapes(cell)
@@ -305,7 +393,7 @@ julia> oas = oasisread(filename);
 julia> cell = oas[:BOTTOM];
 
 julia> shapes(cell)
-1-element Vector{Shape}:
+1-element ShapeStore:
  Rectangle in layer (1/0) at (-185, 2875)
 
 julia> shapes(cell, 1, 0)
@@ -325,9 +413,13 @@ shapes(cell::Cell, l::Integer, d::Integer) = shapes(cell, Interval(l, l), Interv
 shapes(cell::Cell, l::Interval) = shapes(cell, l, Interval(0, typemax(UInt64)))
 
 function shapes(cell::Cell, l::Interval, d::Interval)
-    return filter(cell.shapes) do s
-        s.layerNumber in l && s.datatypeNumber in d
+    matches = Shape[]
+    for v in shape_vectors(cell.shapes)
+        for s in v
+            (s.layerNumber in l && s.datatypeNumber in d) && push!(matches, s)
+        end
     end
+    return matches
 end
 
 """
@@ -345,14 +437,6 @@ Name of a cell.
 name(cell::Cell) = cell.name
 
 """
-    unit(cell)
-    unit(oas)
-
-Unit length of a cell or OASIS object, in grid steps per micron.
-"""
-unit(cell::Cell) = cell.unit
-
-"""
     struct LazyCell
 
 Lazy-loaded version of a `Cell`.
@@ -365,7 +449,6 @@ Lazy-loaded version of a `Cell`.
   record are interpretable, a `LazyCell` stores a list of internal cell name references.
 - `textstringReferences::Dict{UInt64, Symbol}`: Internal text string references, stored for the
   same reason as `cellnameReferences`.
-- `unit::Float64`: Unit length.
 - `_root::Bool`: Indicates whether the cell is a root cell (i.e., isn't contained in any other
   cell).
 
@@ -376,12 +459,10 @@ mutable struct LazyCell <: AbstractCell
     const bytes::SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{Int64}}, true}
     const cellnameReferences::Dict{UInt64, Symbol}
     const textstringReferences::Dict{UInt64, Symbol}
-    const unit::Float64
     _root::Bool
 end
 
 name(cell::LazyCell) = cell.name
-unit(cell::LazyCell) = cell.unit
 
 struct PreprocessedCell <: AbstractCell
     nameOrNumber::Union{Symbol, UInt64}
@@ -398,10 +479,49 @@ Object containing all the data of your OASIS file.
 - `cells::Vector{Union{LazyCell, Cell}}`: Cells in your OASIS file. The cells can either be
   `Cell` objects or lazy-loaded `LazyCell` objects.
 - `layers::Vector{Layer}`: Lists all named layers in your OASIS file.
+- `unit::Float64`: Unit length, in grid steps per micron.
 """
-Base.@kwdef struct Oasis
-    cells::Vector{Union{LazyCell, Cell}} = []
-    layers::Vector{Layer} = [] # FIXME: Unnamed layers aren't added right now.
+mutable struct Oasis
+    const cells::Vector{Union{LazyCell, Cell}}
+    const layers::Vector{Layer} # FIXME: Unnamed layers aren't added right now.
+    unit::Float64
+    # Cell name to position in `cells`. Rebuilt on demand if `cells` is mutated directly.
+    const _index::Dict{Symbol, Int64}
+    _indexedLength::Int64
+end
+
+function Oasis(
+    cells::AbstractVector = Union{LazyCell, Cell}[],
+    layers::AbstractVector{Layer} = Layer[];
+    unit::Real = DEFAULT_UNIT
+)
+    oas = Oasis(
+        convert(Vector{Union{LazyCell, Cell}}, cells),
+        convert(Vector{Layer}, layers),
+        Float64(unit),
+        Dict{Symbol, Int64}(),
+        0
+    )
+    reindex_cells!(oas)
+    return oas
+end
+
+# Appends without checking for duplicates; callers are responsible for that.
+function push_cell!(oas::Oasis, new_cell::Union{LazyCell, Cell})
+    push!(oas.cells, new_cell)
+    oas._index[new_cell.name] = length(oas.cells)
+    oas._indexedLength = length(oas.cells)
+    return oas
+end
+
+function reindex_cells!(oas::Oasis)
+    index = oas._index
+    empty!(index)
+    for (i, cell) in enumerate(oas.cells)
+        get!(index, cell.name, i)
+    end
+    oas._indexedLength = length(oas.cells)
+    return oas
 end
 
 Base.getindex(oas::Oasis, name::AbstractString) = getindex(oas, Symbol(name))
@@ -409,7 +529,13 @@ function Base.getindex(oas::Oasis, name::Symbol)
     return get_cell(oas, name)
 end
 
-get_cell(oas::Oasis, name) = get_cell(cells(oas), name)
+get_cell(oas::Oasis, name::AbstractString) = get_cell(oas, Symbol(name))
+function get_cell(oas::Oasis, name::Symbol)
+    index = find_cell(oas, name)
+    isnothing(index) && return nothing
+    return oas.cells[index]
+end
+
 get_cell(cells::AbstractVector{Union{LazyCell, Cell}}, name::AbstractString) =
     get_cell(cells, Symbol(name))
 function get_cell(cells::AbstractVector{Union{LazyCell, Cell}}, name::Symbol)
@@ -418,27 +544,29 @@ function get_cell(cells::AbstractVector{Union{LazyCell, Cell}}, name::Symbol)
     return cells[index]
 end
 
-find_cell(oas::Oasis, name) = find_cell(cells(oas), name)
+find_cell(oas::Oasis, name::AbstractString) = find_cell(oas, Symbol(name))
+function find_cell(oas::Oasis, name::Symbol)
+    cs = oas.cells
+    oas._indexedLength == length(cs) || reindex_cells!(oas)
+    i = get(oas._index, name, nothing)
+    isnothing(i) && return nothing
+    # `cells` may have been reordered without going through the mutators.
+    (i <= length(cs) && cs[i].name === name) && return i
+    reindex_cells!(oas)
+    return get(oas._index, name, nothing)
+end
+
 find_cell(cells::AbstractVector{Union{LazyCell, Cell}}, name::AbstractString) =
     find_cell(cells, Symbol(name))
 find_cell(cells::AbstractVector{Union{LazyCell, Cell}}, name::Symbol) =
     findfirst(cell -> cell.name == name, cells)
 
-unit(oas::Oasis) = unit(cells(oas))
+"""
+    unit(oas)
 
-function unit(cells::AbstractVector{Union{LazyCell, Cell}})
-    if isempty(cells)
-        @warn "No cells found; taking unit $DEFAULT_UNIT steps per micron"
-        unit = DEFAULT_UNIT
-    else
-        units = unique(cell.unit for cell in cells)
-        unit = first(units)
-        if length(units) > 1
-            @warn "OASIS file has multiple unit lengths"
-        end
-    end
-    return unit
-end
+Unit length of an OASIS object, in grid steps per micron.
+"""
+unit(oas::Oasis) = oas.unit
 
 """
     cells(oas)

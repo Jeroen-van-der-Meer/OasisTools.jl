@@ -203,7 +203,7 @@ end
     s1 = Shape(rect1, UInt64(1), UInt64(0), nothing)  # layer 1/0
     s2 = Shape(rect2, UInt64(1), UInt64(1), nothing)  # layer 1/1
     s3 = Shape(rect3, UInt64(2), UInt64(0), nothing)  # layer 2/0
-    cell = Cell(:TEST, [s1, s2, s3], CellPlacement[], 1000.0, true)
+    cell = Cell(:TEST, [s1, s2, s3], CellPlacement[], true)
 
     @testset "No filter returns all shapes" begin
         @test length(shapes(cell)) == 3
@@ -244,4 +244,59 @@ end
     @test name(layer(oas, :M0)) == :M0
     @test name(layer(oas, :V0)) == :V0
     @test isnothing(layer(oas, :NONEXISTENT))
+end
+
+@testset "Cell name index" begin
+    @testset "Stays in sync through the mutators" begin
+        oas = Oasis()
+        add_cell!(oas, :A)
+        add_cell!(oas, :B)
+        add_cell!(oas, :C)
+        @test OasisTools.find_cell(oas, :A) == 1
+        @test OasisTools.find_cell(oas, :C) == 3
+        @test isnothing(OasisTools.find_cell(oas, :NOPE))
+
+        remove_cell!(oas, :A)
+        @test isnothing(OasisTools.find_cell(oas, :A))
+        @test OasisTools.find_cell(oas, :B) == 1
+        @test OasisTools.find_cell(oas, :C) == 2
+    end
+    @testset "Recovers from direct mutation of cells" begin
+        oas = Oasis()
+        add_cell!(oas, :A)
+        add_cell!(oas, :B)
+
+        # Bypass the mutators entirely.
+        push!(oas.cells, Cell(:C, Shape[], CellPlacement[], true))
+        @test OasisTools.find_cell(oas, :C) == 3
+        @test oas[:C] isa Cell
+
+        reverse!(oas.cells)
+        @test name(oas[:A]) == :A
+        @test name(oas[:C]) == :C
+        @test OasisTools.find_cell(oas, :C) == 1
+    end
+    @testset "Survives lazy cells being replaced in place" begin
+        filepath = joinpath(@__DIR__, "testdata", "nested.oas")
+        oas = oasisread(filepath; lazy = true)
+        @test oas[:BOTTOM] isa LazyCell
+        load_cell!(oas, :BOTTOM)
+        @test oas[:BOTTOM] isa Cell
+        @test name(oas[:BOTTOM]) == :BOTTOM
+    end
+end
+
+@testset "Parser states do not copy their buffer" begin
+    filepath = joinpath(@__DIR__, "testdata", "polygon.oas")
+    oas = oasisread(filepath; lazy = true)
+    lazy_cell = oas[:TOP]
+
+    # `LazyCell.bytes` is a view into the mmap; wrapping it in a parser state used to hit an
+    # implicit convert to Vector{UInt8}, copying the entire cell.
+    @test OasisTools.CellParserState(lazy_cell).buf === lazy_cell.bytes
+    @test OasisTools.LazyCellParserState(lazy_cell.bytes, 1).buf === lazy_cell.bytes
+
+    oas = nothing
+    lazy_cell = nothing
+    GC.gc()
 end

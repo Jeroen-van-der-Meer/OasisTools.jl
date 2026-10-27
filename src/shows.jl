@@ -61,6 +61,24 @@ function Base.show(io::IO, cell::LazyCell)
     print(io, cell.name)
 end
 
+# Spelled out rather than inherited from AbstractVector so that the grouped layout of a
+# ShapeStore doesn't leak into the displayed type.
+function Base.show(io::IO, ::MIME"text/plain", store::ShapeStore)
+    n = length(store)
+    print(io, n, "-element ShapeStore")
+    n == 0 && return
+    print(io, ":")
+    limit = get(io, :limit, false) ? max(displaysize(io)[1] - 4, 1) : n
+    for (i, shape) in enumerate(store)
+        if i > limit
+            print(io, "\n ⋮")
+            break
+        end
+        print(io, "\n ")
+        show(io, shape)
+    end
+end
+
 function Base.show(io::IO, layer::Layer)
     print(io, "$(layer.name) ($(layer.layerNumber)/$(layer.datatypeNumber))")
 end

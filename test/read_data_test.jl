@@ -5,6 +5,7 @@
         @test OasisTools.rui(FileParserState([0x80, 0x01])) == 128
         @test OasisTools.rui(FileParserState([0xff, 0x7f])) == 16383
         @test OasisTools.rui(FileParserState([0x80, 0x80, 0x01])) == 16384
+        @test @inferred(OasisTools.rui(FileParserState([0x80, 0x01]))) === UInt64(128)
     end
     @testset "Read signed integers" begin
         @test OasisTools.read_signed_integer(FileParserState([0x00])) == 0
@@ -26,6 +27,17 @@
         # limited precision.
         @test OasisTools.read_real(FileParserState([0x06, 0xd9, 0x89, 0x1d, 0xbe])) == Float32(-2/13)
         @test OasisTools.read_real(FileParserState([0x07, 0x14, 0x3b, 0xb1, 0x13, 0x3b, 0xb1, 0xc3, 0xbf])) == -2/13
+        # Every format must produce a Float64, otherwise read_real is type unstable.
+        @test OasisTools.read_real(FileParserState([0x00, 0x01])) isa Float64
+        @test OasisTools.read_real(FileParserState([0x01, 0x01])) isa Float64
+        @test OasisTools.read_real(FileParserState([0x02, 0x03])) isa Float64
+        @test OasisTools.read_real(FileParserState([0x03, 0x02])) isa Float64
+        @test OasisTools.read_real(FileParserState([0x04, 0x05, 0x10])) isa Float64
+        @test OasisTools.read_real(FileParserState([0x05, 0x02, 0x0d])) isa Float64
+        @test OasisTools.read_real(FileParserState([0x06, 0xd9, 0x89, 0x1d, 0xbe])) isa Float64
+        @test OasisTools.read_real(
+            FileParserState([0x07, 0x14, 0x3b, 0xb1, 0x13, 0x3b, 0xb1, 0xc3, 0xbf])
+        ) isa Float64
     end
     @testset "Read strings" begin
         @test OasisTools.read_string(FileParserState([0x03, 0x61, 0x62, 0x63, 0x64])) == "abc"
@@ -66,8 +78,8 @@
         ]
     end
     @testset "Read repetitions" begin
-        @test OasisTools.read_repetition(CellParserState([0x00])) == 
-            Point{2, Int64}[] # Init value of modal variable
+        # Type 0 reuses the modal repetition, which starts out unset.
+        @test isnothing(OasisTools.read_repetition(CellParserState([0x00])))
         @test OasisTools.read_repetition(CellParserState([0x01, 0x80, 0x01, 0x7f, 0x01, 0x01])) ==
             PointGridRange((0, 0), 130, 129, (1, 0), (0, 1))
         @test OasisTools.read_repetition(CellParserState([0x02, 0x80, 0x01, 0x7f, 0x01, 0x01])) ==

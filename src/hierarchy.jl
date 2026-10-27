@@ -52,7 +52,7 @@ inaccurate if your OASIS file contains any `LazyCell` objects, as their placemen
 unknown.
 """
 function update_roots!(oas::Oasis)
-    rts = roots(cell_hierarchy(oas))
+    rts = Set(roots(cell_hierarchy(oas)))
     for cell in cells(oas)
         should_be_root = cell.name in rts
         cell._root = should_be_root

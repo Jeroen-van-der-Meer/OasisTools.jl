@@ -4,7 +4,7 @@ Base.@kwdef mutable struct FileModalVariables
 end
 
 Base.@kwdef mutable struct ModalVariables
-    repetition::AbstractVector{Point{2, Int64}} = []
+    repetition::Union{Nothing, Vector{Point{2, Int64}}, PointGridRange} = nothing
     placementX::Int64 = 0
     placementY::Int64 = 0
     placementCell::Symbol = Symbol()
