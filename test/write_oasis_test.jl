@@ -603,3 +603,14 @@ end
         @test readdir(dir) == ["nested.oas"] # No temporary file left behind
     end
 end
+
+@testset "END record" begin
+    # The END record must be exactly 256 bytes long, so that readers can find it by seeking back
+    # from the end of the file. KLayout doesn't check this.
+    path = tempname()
+    oasiswrite(path, Oasis())
+    bytes = read(path)
+    @test bytes[end - 255] == 0x02 # END
+    @test bytes[(end - 254):(end - 253)] == [0xfc, 0x01] # Length of the padding: 252 bytes
+    @test all(iszero, bytes[(end - 252):end]) # NUL padding, and no validation
+end

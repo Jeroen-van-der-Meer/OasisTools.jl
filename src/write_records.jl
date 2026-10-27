@@ -196,7 +196,7 @@ function write_placement_mag_angle(state::WriterState, placement::CellPlacement)
         info_byte = set_bit_to_one(info_byte, 6)
     end
 
-    rot = placement.rotation
+    rot = mod(placement.rotation, 360)
     rot_explicit = !iszero(rot)
     if rot_explicit
         info_byte = set_bit_to_one(info_byte, 7)

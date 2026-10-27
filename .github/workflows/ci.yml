@@ -21,4 +21,11 @@ jobs:
       - uses: julia-actions/julia-downgrade-compat@v1
         if: ${{ matrix.version == '1.10' }}
       - uses: julia-actions/julia-buildpkg@v1
+      # KLayout serves as a reference implementation in the tests.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install klayout==0.30.12
       - uses: julia-actions/julia-runtest@v1
+        env:
+          KLAYOUT_PYTHON: python
