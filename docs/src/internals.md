@@ -53,11 +53,10 @@ Because no geometry is decoded and no cell data is copied, opening a file in laz
 What is known about a cell that isn't loaded comes in tiers, reported by [`tier`](@ref):
 
 - **Tier 0:** only where the cell's contents live in the file.
-- **Tier 1:** a [`CellIndex`](@ref OasisTools.CellIndex) with the cell's placements and, for every layer and datatype, how many shapes it has. This is enough to work out the cell hierarchy and root cells, and to tell which cells an edit can leave alone.
-- **Tier 2:** additionally, the bounding box of the cell's own shapes, which is what [`crop`](@ref) needs.
-- **Tier 3:** the cell is loaded.
+- **Tier 1:** a [`CellIndex`](@ref OasisTools.CellIndex) with the cell's placements, how many shapes it has on every layer and datatype, and the bounding box of its own shapes. This is enough to work out the cell hierarchy and root cells, to tell which cells an edit can leave alone, and to [`crop`](@ref).
+- **Tier 2:** the cell is loaded.
 
-Nothing needs to be done up front: functions compute what they need on demand, and keep the index with the cell for later. [`placements`](@ref) and [`layer_counts`](@ref) bring a cell to tier 1, [`extent`](@ref) to tier 2. [`index!`](@ref) does so explicitly, for a cell or, in parallel, for all cells. Indexing a cell does decode it, which includes decompressing its compressed blocks, but it doesn't keep its shapes in memory.
+Nothing needs to be done up front: functions compute what they need on demand, and keep the index with the cell for later. [`placements`](@ref), [`layer_counts`](@ref) and [`extent`](@ref) bring a cell to tier 1, and [`index!`](@ref) does so explicitly, for a cell or, in parallel, for all cells. Indexing a cell does decode it, which includes decompressing its compressed blocks, but it doesn't keep its shapes in memory.
 
 ### Loading cells on demand
 

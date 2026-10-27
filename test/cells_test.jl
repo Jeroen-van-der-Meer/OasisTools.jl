@@ -79,11 +79,17 @@ end
     index!(cell)
     @test tier(cell) == 1
     @test sprint(show, cell) == "Cell MIDDLE2 with 2 placements and 0 shapes (tier 1)"
+    # The bounding box is part of the index; it used to need a second pass over the cell.
+    summary = cell.index
     @test isnothing(extent(cell)) # No shapes of its own
-    @test tier(cell) == 2
+    @test cell.index === summary
     load!(cell)
-    @test tier(cell) == 3
+    @test tier(cell) == 2
     @test isloaded(cell)
+
+    # The index of a cell with shapes on a single layer is small, as files can have millions of
+    # cells. Counting shapes per layer in a dictionary used to take 744 bytes on its own.
+    @test Base.summarysize(index!(oas[:BOTTOM]).index) < 400
 
     # Asking for placements, shapes or layers of a cell doesn't load it.
     bottom = oas[:BOTTOM]
@@ -122,10 +128,10 @@ end
         filepath = joinpath(@__DIR__, "testdata", filename)
         loaded = oasisread(filepath)
         lazy = oasisread(filepath; lazy = true)
-        index!(lazy; extent = true)
+        index!(lazy)
         for cell in cells(loaded)
             other = lazy[name(cell)]
-            @test tier(other) == 2
+            @test tier(other) == 1
             @test placement_fields.(placements(other)) == placement_fields.(placements(cell))
             @test layer_counts(other) == layer_counts(cell)
             @test extent(other) == extent(cell)
@@ -141,6 +147,13 @@ end
     polygons = flat_polygons(oas, :TOP)
     @test extent(oas, :TOP) == OasisTools.points_box(Iterators.flatten(polygons))
     @test extent(lazy_layout(), :TOP) == extent(oas, :TOP)
+
+    # Bounding boxes of placements are computed for every placement in a layout, so they must
+    # not allocate; they used to, through a temporary array.
+    p = CellPlacement(:LEAF, Point{2, Int64}(5, 7), 90.0, 2.0, true, nothing)
+    leaf_box = box(0, 0, 10, 20)
+    OasisTools.placement_instance_box(p, leaf_box)
+    @test @allocated(OasisTools.placement_instance_box(p, leaf_box)) == 0
 end
 
 @testset "Edits to cells that aren't loaded" begin

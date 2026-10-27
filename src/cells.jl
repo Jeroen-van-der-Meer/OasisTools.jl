@@ -13,17 +13,16 @@ isloaded(cell::Cell) = !isnothing(cell.shapes)
 How much is known about `cell` without decoding it again:
 
 - `0`: Nothing but where its contents live in the file.
-- `1`: Its placements, and how many shapes it has on each layer. See [`index!`](@ref).
-- `2`: Additionally, the bounding box of its own shapes. See [`extent`](@ref).
-- `3`: Everything, as the cell is loaded. See [`load!`](@ref).
+- `1`: Its placements, how many shapes it has on each layer, and the bounding box of its own
+  shapes. See [`index!`](@ref).
+- `2`: Everything, as the cell is loaded. See [`load!`](@ref).
 
 Operations on a cell compute whatever they need on demand, so the tier only affects how much
 work they do.
 """
 function tier(cell::Cell)
-    isloaded(cell) && return 3
-    isnothing(cell.index) && return 0
-    return cell.index.hasExtent ? 2 : 1
+    isloaded(cell) && return 2
+    return isnothing(cell.index) ? 0 : 1
 end
 
 """
@@ -66,12 +65,11 @@ function load!(oas::Oasis)
 end
 
 """
-    index!(cell; extent = false)
-    index!(oas; extent = false)
+    index!(cell)
+    index!(oas)
 
-Bring a cell that isn't loaded, or every such cell in `oas`, to [`tier`](@ref) 1, or to tier 2
-if `extent = true`, by summarizing its contents. The summary is kept with the cell for later
-use. Cells of `oas` are decoded in parallel when Julia is started with more than one thread.
+Bring a cell that isn't loaded, or every such cell in `oas`, to [`tier`](@ref) 1, by
+summarizing its contents. The summary is kept with the cell for later use. Cells of `oas` are decoded in parallel when Julia is started with more than one thread.
 Returns its argument.
 
 Functions such as [`placements`](@ref) and [`extent`](@ref) do this whenever they need to, so
@@ -90,11 +88,11 @@ julia> index!(oas[:TOP])
 Cell TOP with 5 placements and 0 shapes (tier 1)
 ```
 """
-index!(cell::Cell; extent::Bool = false) = (cached_index(cell; extent = extent); cell)
+index!(cell::Cell) = (cached_index(cell); cell)
 
-function index!(oas::Oasis; extent::Bool = false)
+function index!(oas::Oasis)
     foreach_cell_in_parallel(cells(oas)) do cell
-        isloaded(cell) || index!(cell; extent = extent)
+        isloaded(cell) || index!(cell)
     end
     return oas
 end
@@ -102,11 +100,11 @@ end
 # The summary of the contents of `cell`, computing it if needed. For a cell that isn't loaded,
 # this is the summary kept with the cell, so it must not be modified. For a loaded cell, it is
 # computed afresh every time, as the cell's contents may have changed.
-function cached_index(cell::Cell; extent::Bool = false)
-    isloaded(cell) && return CellIndex(decode_cell(IndexSink(true), cell))
+function cached_index(cell::Cell)
+    isloaded(cell) && return CellIndex(decode_cell(IndexSink(), cell))
     index = cell.index
-    if isnothing(index) || (extent && !index.hasExtent)
-        index = CellIndex(decode_cell(IndexSink(extent), cell))
+    if isnothing(index)
+        index = CellIndex(decode_cell(IndexSink(), cell))
         cell.index = index
     end
     return index
@@ -150,7 +148,7 @@ end
 For every `(layer, datatype)` pair used by the shapes of `cell`, how many shapes there are, as
 [`ElementCounts`](@ref). Brings a cell that isn't loaded to [`tier`](@ref) 1.
 """
-layer_counts(cell::Cell) = isloaded(cell) ? cached_index(cell).layers : copy(cached_index(cell).layers)
+layer_counts(cell::Cell) = Dict(cached_index(cell).layers)
 
 """
     extent(cell)
@@ -159,11 +157,11 @@ layer_counts(cell::Cell) = isloaded(cell) ? cached_index(cell).layers : copy(cac
 Bounding box of a cell, as a `Rect{2, Int64}`, or `nothing` if the cell is empty.
 
 `extent(cell)` only takes the cell's own shapes into account, and brings a cell that isn't loaded
-to [`tier`](@ref) 2. `extent(oas, cell_name)` also includes everything placed in the cell, and
+to [`tier`](@ref) 1. `extent(oas, cell_name)` also includes everything placed in the cell, and
 does the same for all cells below it. Bounding boxes of paths, and of cells placed at angles
 other than multiples of 90 degrees, may be slightly larger than strictly necessary.
 """
-extent(cell::Cell) = cached_index(cell; extent = true).extent
+extent(cell::Cell) = cached_index(cell).extent
 
 extent(oas::Oasis, cell_name) =
     hierarchical_extent!(Dict{Symbol, Union{Nothing, Rect{2, Int64}}}(), oas, Symbol(cell_name))

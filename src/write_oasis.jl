@@ -32,6 +32,7 @@ function oasiswrite(
         try
             write_oasis(state, oas; compress = compress)
         finally
+            finish_compression!(state)
             close(state.io)
         end
         # Keep the permissions of the file we're replacing.

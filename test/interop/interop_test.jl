@@ -94,7 +94,7 @@ end
     # Indexed cells are still copied faithfully.
     file = klayout_file("hierarchy")
     oas = oasisread(file; lazy = true)
-    index!(oas; extent = true)
+    index!(oas)
     compare_with_klayout("hierarchy, indexed", file, written(oas))
 end
 

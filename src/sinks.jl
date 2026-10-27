@@ -12,27 +12,39 @@ ContentsSink() = ContentsSink(ShapeStore(), CellPlacement[])
 push_element!(sink::ContentsSink, shape::Shape) = push!(sink.shapes, shape)
 push_element!(sink::ContentsSink, placement::CellPlacement) = push!(sink.placements, placement)
 
-# Keeps placements, but only counts shapes, for building a `CellIndex`.
+# Keeps placements, but only counts shapes and takes their bounding box, for building a
+# `CellIndex`.
 mutable struct IndexSink
     const placements::Vector{CellPlacement}
-    const layers::Dict{Tuple{UInt64, UInt64}, ElementCounts}
-    const trackExtent::Bool
+    const layers::Vector{Pair{Tuple{UInt64, UInt64}, ElementCounts}}
     extent::Union{Nothing, Rect{2, Int64}}
 end
 
-IndexSink(track_extent::Bool) = IndexSink(CellPlacement[], Dict(), track_extent, nothing)
+IndexSink() = IndexSink(CellPlacement[], Pair{Tuple{UInt64, UInt64}, ElementCounts}[], nothing)
 
 function push_element!(sink::IndexSink, shape::Shape)
     key = (shape.layer, shape.datatype)
-    counts = get(sink.layers, key, ElementCounts(0, 0))
-    sink.layers[key] = ElementCounts(counts.records + 1, counts.instances + nrep(shape.repetition))
-    sink.trackExtent && (sink.extent = union_box(sink.extent, shape_extent(shape)))
+    instances = nrep(shape.repetition)
+    # Cells use few layers, so a linear search beats a dictionary.
+    i = findfirst(entry -> first(entry) == key, sink.layers)
+    if isnothing(i)
+        push!(sink.layers, key => ElementCounts(1, instances))
+    else
+        counts = last(sink.layers[i])
+        sink.layers[i] = key => ElementCounts(counts.records + 1, counts.instances + instances)
+    end
+    sink.extent = union_box(sink.extent, shape_extent(shape))
     return nothing
 end
 
 push_element!(sink::IndexSink, placement::CellPlacement) = push!(sink.placements, placement)
 
-CellIndex(sink::IndexSink) = CellIndex(sink.placements, sink.layers, sink.trackExtent, sink.extent)
+# Most cells place nothing, so they can all share one empty list. Lists in a `CellIndex` are
+# never modified.
+const NO_PLACEMENTS = CellPlacement[]
+
+CellIndex(sink::IndexSink) =
+    CellIndex(isempty(sink.placements) ? NO_PLACEMENTS : sink.placements, sink.layers, sink.extent)
 
 # Passes shapes on to a function, for streaming through them.
 struct ShapeCallback{F}

@@ -352,6 +352,19 @@ end
     end
 end
 
+@testset "Many small cells" begin
+    # Setting up a new compressor for every cell used to allocate over 250 KiB per cell.
+    oas = Oasis()
+    for i in 1:1000
+        add_cell!(oas, Symbol("C", i))
+        add_shape!(oas[Symbol("C", i)], Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(i, i)), 1, 0)
+    end
+    path = tempname()
+    oasiswrite(path, oas) # So that compilation doesn't count
+    @test @allocated(oasiswrite(path, oas)) < 50 * 2^20
+    @test length(cells(oasisread(path))) == 1000
+end
+
 @testset "Write Cells with shapes" begin
     @testset "Polygon" begin
         oas = Oasis()

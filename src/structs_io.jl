@@ -117,6 +117,8 @@ mutable struct WriterState
     const layers::Vector{Layer}
     const cellnameReferences::Dict{Symbol, UInt64}
     const mod::WriterModalVariables
+    # Shared with the states that write into CBLOCKs; see `compressor`.
+    const compressor::Base.RefValue{Union{Nothing, DeflateCompressor}}
 end
 
 function WriterState(oas::Oasis, filename::AbstractString, bufsize::Integer)
@@ -124,7 +126,8 @@ function WriterState(oas::Oasis, filename::AbstractString, bufsize::Integer)
         open(filename, "w"),
         Vector{UInt8}(undef, bufsize), bufsize, 1,
         oas.cells, oas.layers,
-        Dict(), WriterModalVariables()
+        Dict(), WriterModalVariables(),
+        Ref{Union{Nothing, DeflateCompressor}}(nothing)
     )
 end
 
@@ -137,6 +140,7 @@ function WriterState(io::IO, parent::WriterState; bufsize::Integer = 4096)
         io,
         Vector{UInt8}(undef, bufsize), bufsize, 1,
         parent.cells, parent.layers,
-        parent.cellnameReferences, parent.mod
+        parent.cellnameReferences, parent.mod,
+        parent.compressor
     )
 end

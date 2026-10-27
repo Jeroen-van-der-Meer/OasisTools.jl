@@ -206,6 +206,26 @@ pending_bytes(block_state::WriterState) = position(block_state.io) + block_state
 
 # Writes everything written to `block_state` so far to `state` as a CBLOCK record, if anything
 # was written at all.
+# Setting up a compressor takes much longer than compressing the contents of a small cell, so a
+# single compressor is set up on first use and then used for every CBLOCK. Once set up, a
+# compressor isn't reset between uses, so `finish_compression!` must release it.
+function compressor(state::WriterState)
+    c = state.compressor[]
+    if isnothing(c)
+        c = DeflateCompressor()
+        CodecZlib.TranscodingStreams.initialize(c)
+        state.compressor[] = c
+    end
+    return c
+end
+
+function finish_compression!(state::WriterState)
+    c = state.compressor[]
+    isnothing(c) && return
+    CodecZlib.TranscodingStreams.finalize(c)
+    state.compressor[] = nothing
+end
+
 function flush_cblock!(state::WriterState, block_state::WriterState)
     if block_state.pos > 1
         write(block_state.io, @view block_state.buf[1:(block_state.pos - 1)])
@@ -213,7 +233,7 @@ function flush_cblock!(state::WriterState, block_state::WriterState)
     end
     uncomp_bytes = take!(block_state.io)
     isempty(uncomp_bytes) && return
-    comp_bytes = transcode(DeflateCompressor, uncomp_bytes)
+    comp_bytes = transcode(compressor(state), uncomp_bytes)
 
     write_byte(state, 34)                       # CBLOCK record type
     wui(state, UInt64(0))                       # comp_type = DEFLATE

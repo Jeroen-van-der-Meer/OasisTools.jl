@@ -102,7 +102,8 @@ end
 function placement_instance_box(p::CellPlacement, box::Rect{2, Int64})
     lo, hi = box_lo(box), box_hi(box)
     corners = (lo, Point{2, Int64}(hi[1], lo[2]), hi, Point{2, Int64}(lo[1], hi[2]))
-    transformed = [transform_point_float(c, p.rotation, p.magnification, p.flipped) for c in corners]
+    # A tuple rather than an array, as this is done for every placement in a layout.
+    transformed = map(c -> transform_point_float(c, p.rotation, p.magnification, p.flipped), corners)
     return make_box(
         Point{2, Int64}(floor(Int64, minimum(first, transformed)), floor(Int64, minimum(last, transformed))) +
             p.location,

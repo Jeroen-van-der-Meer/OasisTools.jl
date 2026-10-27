@@ -377,17 +377,16 @@ memory. See [`index!`](@ref).
 # Properties
 
 - `placements::Vector{CellPlacement}`: All placements in the cell.
-- `layers::Dict{Tuple{UInt64, UInt64}, ElementCounts}`: For every `(layer, datatype)` pair
-  that the cell's shapes use, how many shapes there are. Texts are counted under their text
-  layer and text type.
-- `hasExtent::Bool`: Whether `extent` was computed.
+- `layers::Vector{Pair{Tuple{UInt64, UInt64}, ElementCounts}}`: For every `(layer, datatype)`
+  pair that the cell's shapes use, how many shapes there are. Texts are counted under their
+  text layer and text type. A cell typically uses few layers, for which a list takes much less
+  memory than a dictionary would.
 - `extent::Union{Nothing, Rect{2, Int64}}`: Bounding box of the cell's own shapes, ignoring
-  its placements; `nothing` if the cell has no shapes or if the extent wasn't computed.
+  its placements; `nothing` if the cell has no shapes.
 """
 struct CellIndex
     placements::Vector{CellPlacement}
-    layers::Dict{Tuple{UInt64, UInt64}, ElementCounts}
-    hasExtent::Bool
+    layers::Vector{Pair{Tuple{UInt64, UInt64}, ElementCounts}}
     extent::Union{Nothing, Rect{2, Int64}}
 end
 

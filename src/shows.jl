@@ -61,7 +61,7 @@ function Base.show(io::IO, cell::Cell)
         nplacements, nshapes = length(cell.placements), length(cell.shapes)
     elseif !isnothing(cell.index)
         nplacements = length(cell.index.placements)
-        nshapes = sum(c -> c.records, values(cell.index.layers); init = 0)
+        nshapes = sum(entry -> last(entry).records, cell.index.layers; init = 0)
     else
         print(io, " (tier 0)")
         return
