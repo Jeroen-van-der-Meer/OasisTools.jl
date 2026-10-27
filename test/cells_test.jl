@@ -2,7 +2,7 @@ box(x0, y0, x1, y1) = Rect{2, Int64}(Point{2, Int64}(x0, y0), Point{2, Int64}(x1
 
 # Fields of a placement, with the repetition expanded, so that placements can be compared.
 placement_fields(p) = (
-    p.cellName, p.location, p.rotation, p.magnification, p.flipped,
+    p.cell, p.location, p.rotation, p.magnification, p.flipped,
     isnothing(p.repetition) ? nothing : collect(p.repetition)
 )
 
@@ -27,7 +27,7 @@ function flatten(oas, cell_name, transform = nothing, out = Vector{Point{2, Int6
         end
     end
     for p in placements(oas[cell_name]), q in expand(p)
-        flatten(oas, q.cellName, transform * q, out)
+        flatten(oas, q.cell, transform * q, out)
     end
     return out
 end
@@ -61,7 +61,6 @@ function build_layout()
     )
     add_shape!(oas[:TOP], box(-50, -50, 950, 10), 3, 0)
     add_layer!(oas, Layer(:L2, 2, 0))
-    update_roots!(oas)
     return oas
 end
 
@@ -77,12 +76,12 @@ end
     cell = oas[:MIDDLE2]
     @test tier(cell) == 0
     @test sprint(show, cell) == "Cell MIDDLE2 (tier 0)"
-    index_cell!(cell)
+    index!(cell)
     @test tier(cell) == 1
     @test sprint(show, cell) == "Cell MIDDLE2 with 2 placements and 0 shapes (tier 1)"
     @test isnothing(extent(cell)) # No shapes of its own
     @test tier(cell) == 2
-    load_cell!(cell)
+    load!(cell)
     @test tier(cell) == 3
     @test isloaded(cell)
 
@@ -98,7 +97,6 @@ end
 
     # Roots are found exactly, even without loading anything.
     lazy = oasisread(joinpath(@__DIR__, "testdata", "nested.oas"); lazy = true)
-    update_roots!(lazy)
     @test roots(lazy) == [:TOP]
     @test !any(isloaded, cells(lazy))
 end
@@ -108,7 +106,7 @@ end
         filepath = joinpath(@__DIR__, "testdata", filename)
         loaded = oasisread(filepath)
         lazy = oasisread(filepath; lazy = true)
-        index_all_cells!(lazy; extent = true)
+        index!(lazy; extent = true)
         for cell in cells(loaded)
             other = lazy[name(cell)]
             @test tier(other) == 2
@@ -131,18 +129,17 @@ end
 
 @testset "Edits to cells that aren't loaded" begin
     oas = lazy_layout()
-    index_cell!(oas, :MID)
-    remove_layer!(oas, :L2; cascade = true)
+    filter_shapes!(s -> s.layer != 2, oas)
     add_shape!(oas[:LEAF], box(0, 0, 1, 1), 7, 0)
-    remove_cell!(oas, :MID; cascade = true)
+    remove_cell!(oas, :MID)
     add_placement!(oas[:TOP], :LEAF, Point{2, Int64}(5, 5))
     @test !any(isloaded, cells(oas))
-    # MID was indexed, so it's known not to have anything on layer 2 and doesn't need editing.
+    # MID was removed altogether, so only the other two cells have edits.
     @test sort([(name(c), length(c.edits)) for c in cells(oas)]) == [(:LEAF, 3), (:TOP, 3)]
 
     # The edits show up in everything decoded from the cells…
     @test sort(collect(keys(layer_counts(oas[:LEAF])))) == [(1, 0), (7, 0)]
-    @test [p.cellName for p in placements(oas[:TOP])] == [:LEAF]
+    @test [p.cell for p in placements(oas[:TOP])] == [:LEAF]
 
     # …and are carried out when writing.
     path = tempname()
@@ -150,10 +147,10 @@ end
     written = oasisread(path)
     @test cell_names(written) == [:TOP, :LEAF]
     @test sort(collect(keys(layer_counts(written[:LEAF])))) == [(1, 0), (7, 0)]
-    @test [p.cellName for p in placements(written[:TOP])] == [:LEAF]
+    @test [p.cell for p in placements(written[:TOP])] == [:LEAF]
 
     # Loading a cell applies its edits.
-    load_cell!(oas[:LEAF])
+    load!(oas[:LEAF])
     @test isempty(oas[:LEAF].edits)
     @test length(oas[:LEAF].shapes) == 2
 end

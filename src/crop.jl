@@ -21,12 +21,9 @@ copies only record what to clip, which happens when they are written or loaded.
 """
 function crop(oas::Oasis, cell_name, window::Rect{2, Int64})
     cell_name = Symbol(cell_name)
-    get_existing_cell(oas, cell_name)
+    oas[cell_name] # Throws if there is no such cell
     context = CropContext(oas)
     crop_cell!(context, cell_name, window, cell_name)
-    for cell in cells(context.result)
-        cell._root = cell.name == cell_name
-    end
     return context.result
 end
 
@@ -61,7 +58,7 @@ function crop_cell!(
 
     cell = context.oas[cell_name]
     new_placements = CellPlacement[]
-    for p in placements(cell)
+    for p in cached_placements(cell)
         crop_placement!(context, new_placements, p, window)
     end
 
@@ -71,9 +68,9 @@ function crop_cell!(
         for v in shape_vectors(cell.shapes), s in v
             clip_shape(emit, s, window)
         end
-        cropped = Cell(new_name, sink.shapes, new_placements, false)
+        cropped = Cell(new_name, sink.shapes, new_placements)
     else
-        cropped = copy_cell(cell; name = new_name, root = false)
+        cropped = copy_cell(cell; name = new_name)
         push!(cropped.edits, ClipShapes(window), ReplacePlacements(new_placements))
         cropped.index = nothing
     end
@@ -95,7 +92,7 @@ end
 function crop_placement!(
     context::CropContext, out::Vector{CellPlacement}, p::CellPlacement, window::Rect{2, Int64}
 )
-    child_box = hierarchical_extent!(context.extents, context.oas, p.cellName)
+    child_box = hierarchical_extent!(context.extents, context.oas, p.cell)
     # An empty or missing cell has nothing to crop.
     isnothing(child_box) && return keep_whole!(context, out, p)
     box = placement_extent(p, child_box)
@@ -125,13 +122,13 @@ function crop_placement_instance!(
     context::CropContext, out::Vector{CellPlacement}, p::CellPlacement, window::Rect{2, Int64}
 )
     iszero(mod(p.rotation, 90)) || return keep_whole!(context, out, p)
-    variant = crop_cell!(context, p.cellName, inverse_placement_box(window, p))
+    variant = crop_cell!(context, p.cell, inverse_placement_box(window, p))
     push!(out, CellPlacement(variant, p.location, p.rotation, p.magnification, p.flipped, nothing))
 end
 
 function keep_whole!(context::CropContext, out::Vector{CellPlacement}, p::CellPlacement)
     push!(out, p)
-    copy_whole!(context, p.cellName)
+    copy_whole!(context, p.cell)
 end
 
 # Copies a cell and everything below it to the result without cropping.
@@ -141,8 +138,8 @@ function copy_whole!(context::CropContext, cell_name::Symbol)
     cell = get_cell(context.oas, cell_name)
     # Placements of missing cells stay as they are.
     isnothing(cell) && return
-    for child in unique(p.cellName for p in placements(cell))
+    for child in unique(p.cell for p in cached_placements(cell))
         copy_whole!(context, child)
     end
-    push_cell!(context.result, copy_cell(cell; root = false))
+    push_cell!(context.result, copy_cell(cell))
 end

@@ -2,11 +2,10 @@
 
 ## Unreleased
 
-- Layer filtering API.
 - Expanded OASIS editing API.
 - More transparent errors.
 - More efficient writer.
-- Various bugfixes.
+- Many bug fixes.
 
 ## v0.2.0
 

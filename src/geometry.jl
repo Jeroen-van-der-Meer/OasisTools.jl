@@ -148,16 +148,16 @@ translate(p::Path{2, Int64}, o::Point{2, Int64}) = Path(p.points .+ Ref(o), p.wi
 translate(c::Circle{Int64}, o::Point{2, Int64}) = Circle{Int64}(c.center + o, c.r)
 translate(t::Text, o::Point{2, Int64}) = Text(t.text, t.location + o, t.repetition)
 translate(s::Shape, o::Point{2, Int64}) =
-    Shape(translate(s.shape, o), s.layerNumber, s.datatypeNumber, s.repetition)
+    Shape(translate(s.shape, o), s.layer, s.datatype, s.repetition)
 translate(p::CellPlacement, o::Point{2, Int64}) = CellPlacement(
-    p.cellName, p.location + o, p.rotation, p.magnification, p.flipped, p.repetition
+    p.cell, p.location + o, p.rotation, p.magnification, p.flipped, p.repetition
 )
 
 with_repetition(s::Shape{Text}, rep) =
-    Shape(Text(s.shape.text, s.shape.location, rep), s.layerNumber, s.datatypeNumber, rep)
-with_repetition(s::Shape, rep) = Shape(s.shape, s.layerNumber, s.datatypeNumber, rep)
+    Shape(Text(s.shape.text, s.shape.location, rep), s.layer, s.datatype, rep)
+with_repetition(s::Shape, rep) = Shape(s.shape, s.layer, s.datatype, rep)
 with_repetition(p::CellPlacement, rep) =
-    CellPlacement(p.cellName, p.location, p.rotation, p.magnification, p.flipped, rep)
+    CellPlacement(p.cell, p.location, p.rotation, p.magnification, p.flipped, rep)
 
 # Recombines the instances of `element` (a shape or placement without repetition) at the given
 # offsets into as few elements as possible.
@@ -214,7 +214,7 @@ function clip_instance(emit, s::Shape{Rect{2, Int64}}, window::Rect{2, Int64})
     clo = Point{2, Int64}(max(lo[1], wlo[1]), max(lo[2], wlo[2]))
     chi = Point{2, Int64}(min(hi[1], whi[1]), min(hi[2], whi[2]))
     (chi[1] > clo[1] && chi[2] > clo[2]) || return
-    emit(Shape(make_box(clo, chi), s.layerNumber, s.datatypeNumber, nothing))
+    emit(Shape(make_box(clo, chi), s.layer, s.datatype, nothing))
 end
 
 clip_instance(emit, s::Shape{Polygon{2, Int64}}, window::Rect{2, Int64}) =
@@ -230,7 +230,7 @@ clip_instance(emit, s::Shape, ::Rect{2, Int64}) = emit(s)
 function clip_polygon_shape(emit, s::Shape, points, window::Rect{2, Int64})
     clipped = clip_polygon(points, window)
     (length(clipped) >= 3 && !iszero(twice_area(clipped))) || return
-    emit(Shape(Polygon(clipped), s.layerNumber, s.datatypeNumber, nothing))
+    emit(Shape(Polygon(clipped), s.layer, s.datatype, nothing))
 end
 
 # Sutherland–Hodgman clipping against each of the four sides of the window in turn. Concave

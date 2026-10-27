@@ -1,5 +1,5 @@
 """
-    struct Shape(shape, layerNumber, datatypeNumber, repetition)
+    struct Shape(shape, layer, datatype, repetition)
 
 Geometric shape (such as a polygon or rectangle) or text.
 
@@ -9,16 +9,16 @@ Geometric shape (such as a polygon or rectangle) or text.
   unless the shape is a path, in which case `shape::OasisTools.Path` because `GeometryBasics`
   doesn't have an appropriate object to encode paths. If the shape is text, then
   `shape::OasisTools.Text`.
-- `layerNumber::UInt64`: The layer that your shape lives in. You can find the name of the layer
+- `layer::UInt64`: The layer that your shape lives in. You can find the name of the layer
   using [`layer`](@ref).
-- `datatypeNumber::UInt64`: The 'datatype' that your shape lives in. To clarify, if your shape
-  lives in `(1/0)`, then `datatypeNumber = 0`.
+- `datatype::UInt64`: The 'datatype' that your shape lives in. To clarify, if your shape
+  lives in `(1/0)`, then `datatype = 0`.
 - `repetition`: Specifies whether the shape is repeated. If not, `repetition = nothing`.
 """
 struct Shape{T}
     shape::T
-    layerNumber::UInt64 # If T = Text, this refers to textlayerNumber
-    datatypeNumber::UInt64 # If T = Text, this refers to texttypeNumber
+    layer::UInt64 # The text layer, for texts
+    datatype::UInt64 # The text type, for texts
     repetition::Union{Nothing, Vector{Point{2, Int64}}, PointGridRange}
 end
 
@@ -31,13 +31,13 @@ A named layer, associating a human-readable name with a layer number and datatyp
 # Properties
 
 - `name::Symbol`: Name of the layer.
-- `layerNumber::Interval`: Layer number or range of layer numbers.
-- `datatypeNumber::Interval`: Datatype number or range of datatype numbers.
+- `layer::Interval`: Layer number or range of layer numbers.
+- `datatype::Interval`: Datatype number or range of datatype numbers.
 """
 struct Layer
     name::Symbol
-    layerNumber::Interval
-    datatypeNumber::Interval
+    layer::Interval
+    datatype::Interval
 end
 
 Layer(name::AbstractString, args...) = Layer(Symbol(name), args...)
@@ -61,21 +61,21 @@ function layer(layers::AbstractVector{Layer}, name::Symbol)
     return layers[index]
 end
 
-layer(layers::AbstractVector{Layer}, s::Shape) = layer(layers, s.layerNumber, s.datatypeNumber)
+layer(layers::AbstractVector{Layer}, s::Shape) = layer(layers, s.layer, s.datatype)
 
 function find_layer(layers::AbstractVector{Layer}, l::Integer, d::Integer)
-    return findfirst(r -> (l in r.layerNumber && d in r.datatypeNumber), layers)
+    return findfirst(r -> (l in r.layer && d in r.datatype), layers)
 end
 
 function find_layer(layers::AbstractVector{Layer}, name::Symbol)
     return findfirst(r -> r.name == name, layers)
 end
 
-find_layer(layers::AbstractVector{Layer}, s::Shape) = find_layer(layers, s.layerNumber, s.datatypeNumber)
+find_layer(layers::AbstractVector{Layer}, s::Shape) = find_layer(layers, s.layer, s.datatype)
 
 Base.isdisjoint(l1::Layer, l2::Layer) =
-    isdisjoint(l1.layerNumber, l2.layerNumber) ||
-    isdisjoint(l1.datatypeNumber, l2.datatypeNumber)
+    isdisjoint(l1.layer, l2.layer) ||
+    isdisjoint(l1.datatype, l2.datatype)
 
 struct FileProperty
     nameOrNumber::Union{UInt64, Symbol}
@@ -85,7 +85,6 @@ end
 Base.@kwdef mutable struct Metadata
     unit::Float64 = DEFAULT_UNIT
     const fileProperties::Vector{FileProperty} = []
-    const roots::Vector{Symbol} = []
 end
 
 struct Text # Might want to think of a better name for this struct, since Text is used by Docs.
@@ -112,7 +111,7 @@ Object encoding the placement of a cell in another cell.
 
 # Properties
 
-- `cellName::Symbol`: Name of cell that's being placed.
+- `cell::Symbol`: Name of cell that's being placed.
 - `location::Point{2, Int64}`: Where the cell will be placed.
 - `rotation::Float64`: Counterclockwise rotation (in degrees) of the cell.
 - `magnification::Float64`: Magnification of the cell.
@@ -122,7 +121,7 @@ Object encoding the placement of a cell in another cell.
 - `repetition`: Specifies whether the placement is repeated. If not, `repetition = nothing`.
 """
 struct CellPlacement
-    cellName::Symbol
+    cell::Symbol
     location::Point{2, Int64}
     rotation::Float64
     magnification::Float64
@@ -155,7 +154,7 @@ function Base.:*(outer::CellPlacement, inner::CellPlacement)
     )
     rep = _minkowski_repetition(outer.repetition, inner_rep)
 
-    return CellPlacement(inner.cellName, loc, rot, mag, flip, rep)
+    return CellPlacement(inner.cell, loc, rot, mag, flip, rep)
 end
 
 function _transform_point(
@@ -246,7 +245,7 @@ function expand(p::CellPlacement)
         return (p for _ in 1:1)
     end
     return (
-        CellPlacement(p.cellName, p.location + offset, p.rotation, p.magnification, p.flipped, nothing)
+        CellPlacement(p.cell, p.location + offset, p.rotation, p.magnification, p.flipped, nothing)
         for offset in rep
     )
 end
@@ -362,7 +361,7 @@ end
     struct CellIndex
 
 Summary of the contents of a cell, which can be collected without keeping its shapes in
-memory. See [`index_cell!`](@ref).
+memory. See [`index!`](@ref).
 
 # Properties
 
@@ -410,10 +409,10 @@ that isn't loaded comes in tiers; see [`tier`](@ref).
 - `index::Union{Nothing, CellIndex}`: Summary of the contents of a cell that isn't loaded, if
   it was computed.
 - `edits::Vector{CellEdit}`: Changes to a cell that isn't loaded, still to be applied.
-- `_root::Bool`: Indicates whether the cell is a root cell (i.e., isn't contained in any other
-  cell).
 
-See also [`load_cell!`](@ref), [`index_cell!`](@ref).
+A loaded cell can be created from its shapes and placements, as `Cell(name, shapes, placements)`.
+
+See also [`load!`](@ref), [`index!`](@ref).
 """
 mutable struct Cell
     const name::Symbol
@@ -422,27 +421,17 @@ mutable struct Cell
     source::Union{Nothing, CellSource}
     index::Union{Nothing, CellIndex}
     const edits::Vector{CellEdit}
-    _root::Bool
 end
 
 Cell(name::AbstractString, args...) = Cell(Symbol(name), args...)
 
-Cell(
-    name::Symbol,
-    shapes::ShapeStore,
-    placements::AbstractVector{CellPlacement},
-    root::Bool
-) = Cell(name, shapes, convert(Vector{CellPlacement}, placements), nothing, nothing, CellEdit[], root)
+Cell(name::Symbol, shapes::ShapeStore, placements::AbstractVector{CellPlacement}) =
+    Cell(name, shapes, convert(Vector{CellPlacement}, placements), nothing, nothing, CellEdit[])
 
-Cell(
-    name::Symbol,
-    shapes::Vector{<:Shape},
-    placements::AbstractVector{CellPlacement},
-    root::Bool
-) = Cell(name, ShapeStore(shapes), placements, root)
+Cell(name::Symbol, shapes::Vector{<:Shape}, placements::AbstractVector{CellPlacement}) =
+    Cell(name, ShapeStore(shapes), placements)
 
-Cell(name::Symbol, source::CellSource, root::Bool) =
-    Cell(name, nothing, nothing, source, nothing, CellEdit[], root)
+Cell(name::Symbol, source::CellSource) = Cell(name, nothing, nothing, source, nothing, CellEdit[])
 
 """
     name(cell)
@@ -510,10 +499,17 @@ function reindex_cells!(oas::Oasis)
     return oas
 end
 
-Base.getindex(oas::Oasis, name::AbstractString) = getindex(oas, Symbol(name))
-function Base.getindex(oas::Oasis, name::Symbol)
-    return get_cell(oas, name)
+# `oas[name]` throws a `KeyError` for a missing cell; `get(oas, name, default)` doesn't.
+function Base.getindex(oas::Oasis, name::Union{Symbol, AbstractString})
+    cell = get_cell(oas, name)
+    isnothing(cell) && throw(KeyError(Symbol(name)))
+    return cell
 end
+
+Base.get(oas::Oasis, name::Union{Symbol, AbstractString}, default) =
+    something(get_cell(oas, name), Some(default))
+
+Base.haskey(oas::Oasis, name::Union{Symbol, AbstractString}) = !isnothing(get_cell(oas, name))
 
 get_cell(oas::Oasis, name::AbstractString) = get_cell(oas, Symbol(name))
 function get_cell(oas::Oasis, name::Symbol)

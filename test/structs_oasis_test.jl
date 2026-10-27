@@ -3,7 +3,7 @@
         outer = CellPlacement(:B, Point{2, Int64}(100, 200), 0.0, 1.0, false, nothing)
         inner = CellPlacement(:C, Point{2, Int64}(10, 20), 0.0, 1.0, false, nothing)
         r = outer * inner
-        @test r.cellName == :C
+        @test r.cell == :C
         @test r.location == Point{2, Int64}(110, 220)
         @test r.rotation == 0.0
         @test r.magnification == 1.0
@@ -139,7 +139,7 @@ end
         p = CellPlacement(:A, Point{2, Int64}(10, 20), 45.0, 2.0, true, nothing)
         result = collect(expand(p))
         @test length(result) == 1
-        @test result[1].cellName == :A
+        @test result[1].cell == :A
         @test result[1].location == Point{2, Int64}(10, 20)
         @test result[1].rotation == 45.0
         @test result[1].magnification == 2.0
@@ -155,7 +155,7 @@ end
         @test result[2].location == Point{2, Int64}(105, 10)
         @test result[3].location == Point{2, Int64}(205, 10)
         for r in result
-            @test r.cellName == :B
+            @test r.cell == :B
             @test r.rotation == 90.0
             @test r.magnification == 1.0
             @test r.flipped == false
@@ -203,7 +203,7 @@ end
     s1 = Shape(rect1, UInt64(1), UInt64(0), nothing)  # layer 1/0
     s2 = Shape(rect2, UInt64(1), UInt64(1), nothing)  # layer 1/1
     s3 = Shape(rect3, UInt64(2), UInt64(0), nothing)  # layer 2/0
-    cell = Cell(:TEST, [s1, s2, s3], CellPlacement[], true)
+    cell = Cell(:TEST, [s1, s2, s3], CellPlacement[])
 
     @testset "No filter returns all shapes" begin
         @test length(shapes(cell)) == 3
@@ -267,7 +267,7 @@ end
         add_cell!(oas, :B)
 
         # Bypass the mutators entirely.
-        push!(oas.cells, Cell(:C, Shape[], CellPlacement[], true))
+        push!(oas.cells, Cell(:C, Shape[], CellPlacement[]))
         @test OasisTools.find_cell(oas, :C) == 3
         @test oas[:C] isa Cell
 
@@ -280,7 +280,7 @@ end
         filepath = joinpath(@__DIR__, "testdata", "nested.oas")
         oas = oasisread(filepath; lazy = true)
         @test !isloaded(oas[:BOTTOM])
-        load_cell!(oas, :BOTTOM)
+        load!(oas[:BOTTOM])
         @test isloaded(oas[:BOTTOM])
         @test name(oas[:BOTTOM]) == :BOTTOM
     end

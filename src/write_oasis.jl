@@ -61,8 +61,12 @@ function write_oasis(state::WriterState, oas::Oasis; compress::Bool = true)
     write(state.io, @view state.buf[1:(state.pos - 1)])
 end
 
+# The root cells are only recorded if they are known without decoding anything, as the
+# S_TOP_CELL property is optional.
 function write_roots(state::WriterState)
-    for root in roots(state.cells)
+    rts = known_roots(state.cells)
+    isnothing(rts) && return
+    for root in rts
         write_property(state, 0, root) # 'S_TOP_CELL' to be numerically stored as 0
     end
 end

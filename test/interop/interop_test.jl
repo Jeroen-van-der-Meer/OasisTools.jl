@@ -91,7 +91,7 @@ end
     # Indexed cells are still copied faithfully.
     file = klayout_file("hierarchy")
     oas = oasisread(file; lazy = true)
-    index_all_cells!(oas; extent = true)
+    index!(oas; extent = true)
     compare_with_klayout("hierarchy, indexed", file, written(oas))
 end
 
@@ -99,12 +99,11 @@ end
     file = klayout_file("hierarchy")
     for lazy in (false, true)
         oas = oasisread(file; lazy = lazy)
-        add_layer!(oas, Layer(:L2, 2, 0))
-        remove_layer!(oas, :L2; cascade = true)
+        filter_shapes!(s -> !(s.layer == 2 && s.datatype == 0), oas)
         compare_with_klayout("Removing a layer, lazy = $lazy", file, written(oas), "--drop", "2/0")
 
         oas = oasisread(file; lazy = lazy)
-        remove_cell!(oas, :EMPTY; cascade = true)
+        remove_cell!(oas, :EMPTY)
         compare_with_klayout("Removing an empty cell, lazy = $lazy", file, written(oas), "--no-structure")
     end
     # Edits to cells that aren't loaded match edits to loaded cells.
@@ -112,7 +111,7 @@ end
         oas = oasisread(file; lazy = lazy)
         add_shape!(oas[:LEAF], interop_box(0, 0, 50, 70), 7, 0)
         add_placement!(oas[:TOP], :LEAF, Point{2, Int64}(-9000, 300); rotation = 270, flipped = true)
-        remove_cell!(oas, :ONLY_PLACEMENTS; cascade = true)
+        remove_cell!(oas, :ONLY_PLACEMENTS)
         written(oas)
     end
     compare_with_klayout("Edits with and without loading", results...)
@@ -151,7 +150,6 @@ end
         add_placement!(oas[:TOP], :SUB, Point{2, Int64}(500, 7);
             rotation = rotation, flipped = flipped, magnification = magnification,
             repetition = PointGridRange((0, 0), 2, 1, (200, 0), (0, 0)))
-        update_roots!(oas)
         return written(oas)
     end
     # Magnification 2 makes for the other kind of PLACEMENT record.
@@ -172,7 +170,7 @@ end
         csv = tempname() * ".csv"
         open(csv, "w") do io
             for target in targets, p in find_instances(oas, Symbol(target); top = :TOP)
-                println(io, join((p.cellName, p.location..., mod(p.rotation, 360), p.magnification, p.flipped), ","))
+                println(io, join((p.cell, p.location..., mod(p.rotation, 360), p.magnification, p.flipped), ","))
             end
         end
         queue_klayout_check("Instances in $case", "check_instances", file, "TOP", csv, targets...)

@@ -33,19 +33,23 @@ function show_cells(
     end
 end
 
-function show_shapes(oas::Oasis; cell::Symbol, maxdepth = 1, flat = false)
-    @error "Not implemented"
-end
-
 # Custom shows
 
+# Showing an OASIS object never decodes anything: the hierarchy is only shown if it is known.
 function Base.show(io::IO, oas::Oasis)
-    print(io, "OASIS file ")
-    rts = roots(oas)
-    if isempty(rts)
-        print(io, "with unknown cell hierarchy")
+    ncells = length(cells(oas))
+    if ncells == 0
+        print(io, "OASIS file without any cells")
+        return
+    end
+    rts = known_roots(cells(oas))
+    if isnothing(rts)
+        print(io, "OASIS file with $ncells cell$(ncells == 1 ? "" : "s"), whose hierarchy is known once ")
+        print(io, "they are indexed (see `index!`)")
+    elseif isempty(rts)
+        print(io, "OASIS file with $ncells cells, none of which is a root cell")
     else
-        print(io, "with the following cell hierarchy:\n")
+        print(io, "OASIS file with the following cell hierarchy:\n")
         show_cells(oas; maxdepth = 2, flat = false, io = io, roots = rts)
     end
 end
@@ -85,7 +89,7 @@ function Base.show(io::IO, ::MIME"text/plain", store::ShapeStore)
 end
 
 function Base.show(io::IO, layer::Layer)
-    print(io, "$(layer.name) ($(layer.layerNumber)/$(layer.datatypeNumber))")
+    print(io, "$(layer.name) ($(layer.layer)/$(layer.datatype))")
 end
 
 function Base.show(io::IO, interval::Interval)
@@ -101,7 +105,7 @@ function Base.show(io::IO, interval::Interval)
 end
 
 function Base.show(io::IO, placement::CellPlacement)
-    print(io, "Placement of cell $(placement.cellName) at ($(placement.location[1]), $(placement.location[2]))")
+    print(io, "Placement of cell $(placement.cell) at ($(placement.location[1]), $(placement.location[2]))")
     repetition = !isnothing(placement.repetition)
     if repetition
         nrep = length(placement.repetition)
@@ -148,12 +152,12 @@ function _show_hierarchy(
             print(io, prefix, connector, root_name)
             new_prefix = prefix * (last ? "   " : "│  ")
         end
-        root_cell = oas[root_name]
+        root_cell = get_cell(oas, root_name)
         isnothing(root_cell) && continue
         # Only what is known without decoding gets shown.
         known = known_placements(root_cell)
         if !isnothing(known)
-            children = unique([p.cellName for p in known])
+            children = unique([p.cell for p in known])
             nunique_children = length(children)
             # If `maxdepth` is reached, we check whether the current element has any further children.
             # Rather than printing them, we print an ellipsis (⋯) to indicate that there are children.
@@ -182,7 +186,7 @@ function _show_hierarchy(
 end
 
 function _show_shape(io::IO, shape::Shape, name, location)
-    print(io, "$name in layer ($(shape.layerNumber)/$(shape.datatypeNumber)) at ($(location[1]), $(location[2]))")
+    print(io, "$name in layer ($(shape.layer)/$(shape.datatype)) at ($(location[1]), $(location[2]))")
     repetition = !isnothing(shape.repetition)
     if repetition
         nrep = length(shape.repetition)

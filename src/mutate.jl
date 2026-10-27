@@ -1,31 +1,9 @@
-function add_cell!(oas::Oasis, new_cell::Cell)
-    isnothing(find_cell(oas, new_cell.name)) ||
-        error("Cell with name $(new_cell.name) already exists")
-    return push_cell!(oas, new_cell)
-end
-
-add_cell!(oas::Oasis, cell_name::AbstractString) = add_cell!(oas, Symbol(cell_name))
-
-add_cell!(oas::Oasis, cell_name::Symbol) =
-    add_cell!(oas, Cell(cell_name, ShapeStore(), CellPlacement[], true))
-
-add_cell!(cells::AbstractVector{Cell}, cell_name::AbstractString) =
-    add_cell!(cells, Symbol(cell_name))
-
-function add_cell!(cells::AbstractVector{Cell}, cell_name::Symbol)
-    add_cell!(cells, Cell(cell_name, ShapeStore(), CellPlacement[], true))
-    return cells
-end
-
 """
     add_cell!(oas, cell)
+    add_cell!(oas, cell_name)
 
-Add a cell to an OASIS object.
-
-# Arguments
-
-- `oas::Oasis`: Your input OASIS object.
-- `cell`: Can be a `Cell`, or simply the name of the new cell you wish to add.
+Add a cell to `oas`: either a `Cell`, or a new, empty cell with the given name. Throws an error
+if a cell with that name already exists. Returns `oas`.
 
 # Example
 
@@ -46,17 +24,13 @@ TOP
 NEW
 ```
 """
-function add_cell!(
-    cells::AbstractVector{Cell},
-    new_cell::Cell;
-    kwargs...
-)    if isnothing(find_cell(cells, new_cell.name))
-        push!(cells, new_cell)
-    else
-        error("Cell with name $(new_cell.name) already exists")
-    end
-    return cells
+function add_cell!(oas::Oasis, new_cell::Cell)
+    haskey(oas, new_cell.name) && error("Cell with name $(new_cell.name) already exists")
+    return push_cell!(oas, new_cell)
 end
+
+add_cell!(oas::Oasis, cell_name::Union{Symbol, AbstractString}) =
+    add_cell!(oas, Cell(Symbol(cell_name), ShapeStore(), CellPlacement[]))
 
 """
     add_shape!(cell, shape)
@@ -126,78 +100,53 @@ function add_placement!(
 end
 
 """
-    remove_cell!(oas, cell_name; cascade = false)
+    remove_cell!(oas, cell_name)
 
-Remove a cell from an OASIS object. Throws an error if no cell with the given name exists.
-
-If `cascade = true`, also removes all placements of the deleted cell from other cells. For cells
-that aren't loaded, this is recorded and carried out whenever they are decoded, except where
-their [`tier`](@ref) shows they don't place the deleted cell.
-
-Otherwise, use [`validate_placements`](@ref) to check for dangling references.
+Remove a cell from `oas`, along with all of its placements in other cells. Throws a `KeyError` if
+there is no such cell. For cells that aren't loaded, removing the placements is recorded and
+carried out whenever they are decoded, except where their [`tier`](@ref) shows that they don't
+place the removed cell. Returns `oas`.
 """
-function remove_cell!(oas::Oasis, cell_name::Symbol; cascade::Bool = false)
+function remove_cell!(oas::Oasis, cell_name::Union{Symbol, AbstractString})
+    cell_name = Symbol(cell_name)
     index = find_cell(oas, cell_name)
-    isnothing(index) && error("No cell with name $cell_name")
+    isnothing(index) && throw(KeyError(cell_name))
     deleteat!(oas.cells, index)
     reindex_cells!(oas)
-    if cascade
-        for cell in cells(oas)
-            known = known_placements(cell)
-            # Leave alone cells known not to place the deleted cell.
-            !isnothing(known) && all(p -> p.cellName != cell_name, known) && continue
-            edit_cell!(cell, RemovePlacements(cell_name))
-        end
+    for cell in cells(oas)
+        may_place(cell, cell_name) && edit_cell!(cell, RemovePlacements(cell_name))
     end
     return oas
 end
 
-merge_cells(
-    cells::AbstractVector{Cell},
-    others::AbstractVector{Cell}...
-) = merge_cells!(copy(cells), others...)
+"""
+    rename_cell!(oas, old_name, new_name)
 
-function merge_cells!(
-    cells::AbstractVector{Cell},
-    others::AbstractVector{Cell}...
-)
-    for other in others
-        merge_cells!(cells, other)
-    end
-    return cells
-end
-
-function merge_cells!(
-    cells::AbstractVector{Cell},
-    other::AbstractVector{Cell}
-)
-    for new_cell in other
-        merge_cells!(cells, new_cell)
-    end
-    return cells
-end
-
-function merge_cells!(
-    cells::AbstractVector{Cell},
-    new_cell::Cell
-)
-    if isnothing(find_cell(cells, new_cell.name))
-        push!(cells, new_cell)
-    else
-        @warn "Duplicate cell name $(new_cell.name) detected"
-    end
-    return cells
-end
-
-function merge_cells!(oas::Oasis, other::Oasis)
-    for new_cell in cells(other)
-        if isnothing(find_cell(oas, new_cell.name))
-            push_cell!(oas, new_cell)
-        else
-            @warn "Duplicate cell name $(new_cell.name) detected"
-        end
+Rename a cell, along with all of its placements in other cells. Throws an error if there is no
+cell called `old_name`, or if there already is one called `new_name`. For cells that aren't
+loaded, renaming the placements is recorded and carried out whenever they are decoded, except
+where their [`tier`](@ref) shows that they don't place the renamed cell. Returns `oas`.
+"""
+function rename_cell!(oas::Oasis, old_name, new_name)
+    old_name, new_name = Symbol(old_name), Symbol(new_name)
+    index = find_cell(oas, old_name)
+    isnothing(index) && throw(KeyError(old_name))
+    haskey(oas, new_name) && error("Cell with name $new_name already exists")
+    # A cell's name can't change, but its contents can simply move to a new cell.
+    cell = oas.cells[index]
+    oas.cells[index] = Cell(new_name, cell.shapes, cell.placements, cell.source, cell.index, cell.edits)
+    reindex_cells!(oas)
+    for cell in cells(oas)
+        may_place(cell, old_name) && edit_cell!(cell, RenamePlacements(old_name, new_name))
     end
     return oas
+end
+
+# Whether `cell` may place the cell `cell_name`: `false` only if the placements of `cell` are
+# known without decoding anything, and none of them do.
+function may_place(cell::Cell, cell_name::Symbol)
+    known = known_placements(cell)
+    return isnothing(known) || any(p -> p.cell == cell_name, known)
 end
 
 """
@@ -257,141 +206,96 @@ function add_layer!(layers::AbstractVector{Layer}, new_layer::Layer)
 end
 
 """
-    remove_layer!(oas, name::Symbol; cascade = false)
-    remove_layer!(oas, layer_number, datatype_number; cascade = false)
+    filter_shapes!(f, oas)
+    filter_shapes!(f, cell)
 
-Remove a layer from an OASIS object.
+Keep only the shapes `s` for which `f(s)` returns `true`, in every cell of `oas` or in a single
+cell. Cells that aren't loaded stay that way: the filter is recorded and carried out whenever
+they are decoded.
 
-If `cascade = true`, also removes all shapes whose layer/datatype numbers fall within the
-removed layer's intervals. For cells that aren't loaded, this is recorded and carried out
-whenever they are decoded, except where their [`tier`](@ref) shows they have no such shapes.
+# Example
+
+Keeping only layer 1, datatype 0:
+
+```julia
+filter_shapes!(s -> s.layer == 1 && s.datatype == 0, oas)
+```
 """
-function remove_layer!(oas::Oasis, name::Symbol; cascade::Bool=false)
-    index = find_layer(oas, name)
-    isnothing(index) && error("No layer with name $name")
-    removed = oas.layers[index]
-    deleteat!(oas.layers, index)
-    cascade && _cascade_remove_layer!(oas, removed)
-    return oas
-end
+filter_shapes!(f, cell::Cell) = edit_cell!(cell, FilterShapes(f))
 
-function remove_layer!(oas::Oasis, l::Integer, d::Integer; cascade::Bool=false)
-    index = find_layer(oas, l, d)
-    isnothing(index) && error("No layer matching ($l, $d)")
-    removed = oas.layers[index]
-    deleteat!(oas.layers, index)
-    cascade && _cascade_remove_layer!(oas, removed)
-    return oas
-end
-
-function _cascade_remove_layer!(oas::Oasis, l::Layer)
+function filter_shapes!(f, oas::Oasis)
     for cell in cells(oas)
-        # Leave alone cells known not to have shapes on the removed layer.
-        if !isloaded(cell) && !isnothing(cell.index)
-            any(((ln, dn),) -> ln in l.layerNumber && dn in l.datatypeNumber, keys(cell.index.layers)) ||
-                continue
-        end
-        edit_cell!(cell, RemoveShapes(l.layerNumber, l.datatypeNumber))
+        filter_shapes!(f, cell)
     end
+    return oas
 end
 
-merge_layers(layers::AbstractVector{Layer}, others::AbstractVector{Layer}...) =
-    merge_layers!(copy(layers), others...)
-
-function merge_layers!(layers::AbstractVector{Layer}, others::AbstractVector{Layer}...)
-    for other in others
-        merge_layers!(layers, other)
-    end
-    return layers
-end
-
+# Adds the layers of `other` that `layers` doesn't have yet.
 function merge_layers!(layers::AbstractVector{Layer}, other::AbstractVector{Layer})
     for new_layer in other
-        merge_layers!(layers, new_layer)
+        new_layer in layers || push!(layers, new_layer)
     end
     return layers
 end
 
-function merge_layers!(layers::AbstractVector{Layer}, new_layer::Layer)
-    for (i, layer) in enumerate(layers)
-        if !isdisjoint(layer, new_layer)
-            if (layer.layerNumber == new_layer.layerNumber) &&
-                (layer.datatypeNumber == new_layer.datatypeNumber)
-                if layer.name != new_layer.name
-                    layers[i] = Layer(
-                        Symbol(layer.name, :", ", new_layer.name),
-                        layer.layerNumber,
-                        layer.datatypeNumber
-                    )
-                end
-            else
-                if layer.name != new_layer.name
-                    @warn "Ambiguity merging layers $layer and $new_layer -- skipping $new_layer"
-                else
-                    layers[i] = Layer(
-                        layer.name,
-                        union(layer.layerNumber, new_layer.layerNumber),
-                        union(layer.datatypeNumber, new_layer.datatypeNumber)
-                    )
-                end
-            end
-        end
-    end
-    return layers
-end
-
-Base.copy(oas::Oasis) = Oasis(copy(oas.cells), copy(oas.layers); unit = oas.unit)
+# Copies can be edited independently of the original.
+Base.copy(oas::Oasis) = Oasis(map(copy_cell, oas.cells), copy(oas.layers); unit = oas.unit)
 
 """
-    merge_oases(oas...)
+    merge_oases(oas, others...)
 
-Merge one or more OASIS files. Using an opinionated plural for 'OASIS'.
+Combine the cells and layers of several OASIS objects into a new one, leaving the originals
+untouched. Using an opinionated plural for 'OASIS'.
+
+Throws an error if the objects use different database units (see `OasisTools.unit`), or if any
+cell names occur in more than one of them; use [`rename_cell!`](@ref) to resolve such clashes.
 
 # Example
 
 ```jldoctest
 julia> using OasisTools;
 
-julia> filename1 = joinpath(OasisTools.TESTDATA_DIRECTORY, "nested.oas");
+julia> filename1 = joinpath(OasisTools.TESTDATA_DIRECTORY, "flipped.oas");
 
 julia> filename2 = joinpath(OasisTools.TESTDATA_DIRECTORY, "trapezoids.oas");
 
-julia> oas1 = oasisread(filename1; lazy = true)
+julia> merge_oases(oasisread(filename1), oasisread(filename2))
 OASIS file with the following cell hierarchy:
 TOP
-└─ ?
-
-julia> oas2 = oasisread(filename2)
-OASIS file with the following cell hierarchy:
-noname
-
-julia> oas = merge_oases(oas1, oas2)
-OASIS file with the following cell hierarchy:
-TOP
-└─ ?
+└─ POLY
 noname
 ```
+
+See also [`merge_oases!`](@ref).
 """
-merge_oases(oasis::Oasis, others::Oasis...) = merge_oases!(copy(oasis), others...)
+merge_oases(oas::Oasis, others::Oasis...) = merge_oases!(copy(oas), others...)
 
 """
     merge_oases!(oas, others...)
 
-Update OASIS file with content from the other OASIS files. Using an opinionated plural for
-'OASIS'.
-"""
-function merge_oases!(oasis::Oasis, others::Oasis...)
-    for other in others
-        merge_oases!(oasis, other)
-    end
-    return oasis
-end
+Add the cells and layers of `others` to `oas`, leaving `others` untouched. Throws an error, without
+changing `oas`, if the objects use different database units, or if any cell names occur in more
+than one of them. Using an opinionated plural for 'OASIS'.
 
-function merge_oases!(oasis::Oasis, other::Oasis)
-    if oasis.unit != other.unit
-        @warn "Merging OASIS objects with different unit lengths; keeping $(oasis.unit)"
+See also [`merge_oases`](@ref).
+"""
+function merge_oases!(oas::Oasis, others::Oasis...)
+    names = Set(cell_names(oas))
+    for other in others
+        unit(other) == unit(oas) || error(
+            "Cannot merge OASIS objects with different database units: $(unit(oas)) and $(unit(other)) grid steps per micron"
+        )
+        clashes = [n for n in cell_names(other) if n in names]
+        isempty(clashes) || error(
+            "Cell names occur more than once: $(join(clashes, ", ")). Use `rename_cell!` to resolve this."
+        )
+        union!(names, cell_names(other))
     end
-    merge_cells!(oasis, other)
-    merge_layers!(oasis.layers, other.layers)
-    return oasis
+    for other in others
+        for cell in cells(other)
+            push_cell!(oas, copy_cell(cell))
+        end
+        merge_layers!(oas.layers, other.layers)
+    end
+    return oas
 end

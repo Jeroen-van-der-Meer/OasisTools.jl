@@ -1,55 +1,33 @@
 """
-    struct CellHierarchy
+    roots(oas)
 
-Encodes the cell hierarchy of an OASIS file.
+Names of the root cells of `oas`, i.e. those that aren't placed in any other cell. Cells that
+aren't loaded are brought to [`tier`](@ref) 1 to find their placements.
 
-# Properties
+To see the whole cell hierarchy, use [`show_cells`](@ref). [`placements`](@ref) lists what a
+single cell places, so that the hierarchy can be had as a dictionary with
 
-- `hierarchy::Dict{Symbol, Vector{Symbol}}`. The keys are the cell names, and their values are
-  the (unique) names of the cells that have been placed within them.
+```julia
+Dict(name(cell) => unique(p.cell for p in placements(cell)) for cell in cells(oas))
+```
 """
-struct CellHierarchy
-    hierarchy::Dict{Symbol, Vector{Symbol}}
+function roots(oas::Oasis)
+    index!(oas)
+    return roots_from_placements(cells(oas), cached_placements)
 end
 
-function roots(ch::CellHierarchy)
-    all_nodes = keys(ch.hierarchy)
-    child_nodes = unique(k for children in values(ch.hierarchy) for k in children)
-    return setdiff(all_nodes, child_nodes)
+# Root cells if they're known without decoding anything, and `nothing` otherwise.
+function known_roots(cs::AbstractVector{Cell})
+    all(cell -> !isnothing(known_placements(cell)), cs) || return nothing
+    return roots_from_placements(cs, known_placements)
 end
 
-roots(oas::Oasis) = roots(cells(oas))
-roots(cells::AbstractVector{Cell}) = [c.name for c in cells if c._root]
-
-"""
-    cell_hierarchy(oas)
-
-Find the cell hierarchy of your OASIS object. Cells that aren't loaded are brought to
-[`tier`](@ref) 1 to find their placements.
-"""
-function cell_hierarchy(oas::Oasis)
-    index_all_cells!(oas)
-    ch = CellHierarchy(Dict())
-    for cell in cells(oas)
-        ch.hierarchy[cell.name] = unique(p.cellName for p in placements(cell))
+function roots_from_placements(cs::AbstractVector{Cell}, placements_of)
+    placed = Set{Symbol}()
+    for cell in cs, p in placements_of(cell)
+        p.cell == cell.name || push!(placed, p.cell)
     end
-    return ch
-end
-
-"""
-    update_roots!(oas)
-
-Go through the cell hierarchy to figure out which cells are root cells, i.e. aren't placed in
-any other cell. Cells that aren't loaded are brought to [`tier`](@ref) 1 to find their
-placements.
-"""
-function update_roots!(oas::Oasis)
-    rts = Set(roots(cell_hierarchy(oas)))
-    for cell in cells(oas)
-        should_be_root = cell.name in rts
-        cell._root = should_be_root
-    end
-    return oas
+    return [cell.name for cell in cs if cell.name ∉ placed]
 end
 
 """
@@ -60,13 +38,13 @@ Returns a list of warning strings; an empty list means no issues were found. Cel
 loaded are brought to [`tier`](@ref) 1 to find their placements.
 """
 function validate_placements(oas::Oasis)
-    index_all_cells!(oas)
+    index!(oas)
     warnings = String[]
     known_cells = Set(cell_names(oas))
     for cell in cells(oas)
-        for p in placements(cell)
-            if p.cellName ∉ known_cells
-                push!(warnings, "Cell $(cell.name) places unknown cell $(p.cellName)")
+        for p in cached_placements(cell)
+            if p.cell ∉ known_cells
+                push!(warnings, "Cell $(cell.name) places unknown cell $(p.cell)")
             end
         end
     end
@@ -111,14 +89,14 @@ instances = find_instances(oas, r"^NAND2_"; top = :TOP)
 open("instances.csv", "w") do io
     println(io, "cell,x,y,rotation,magnification,flipped")
     for p in instances
-        println(io, join((p.cellName, p.location..., p.rotation, p.magnification, p.flipped), ","))
+        println(io, join((p.cell, p.location..., p.rotation, p.magnification, p.flipped), ","))
     end
 end
 ```
 """
 function find_instances(oas::Oasis, pattern; top = nothing)
     top = isnothing(top) ? only_root(oas) : Symbol(top)
-    get_existing_cell(oas, top)
+    oas[top] # Throws if there is no such cell
     matches = name_matcher(pattern)
 
     # Whether a match is placed anywhere below a cell, worked out once per cell.
@@ -128,20 +106,20 @@ function find_instances(oas::Oasis, pattern; top = nothing)
         below[cell_name] = false # Guards against cells placed inside themselves.
         cell = get_cell(oas, cell_name)
         result = !isnothing(cell) &&
-            any(c -> matches(c) || has_match_below(c), unique(p.cellName for p in placements(cell)))
+            any(c -> matches(c) || has_match_below(c), unique(p.cell for p in cached_placements(cell)))
         below[cell_name] = result
         return result
     end
 
     found = CellPlacement[]
     function visit(cell_name::Symbol, transform::CellPlacement)
-        for p in placements(oas[cell_name])
-            hit, descend = matches(p.cellName), has_match_below(p.cellName)
+        for p in cached_placements(oas[cell_name])
+            hit, descend = matches(p.cell), has_match_below(p.cell)
             (hit || descend) || continue
             for instance in expand(p)
                 placed = transform * instance # The instance, in the coordinates of `top`
                 hit && push!(found, placed)
-                descend && visit(p.cellName, placed)
+                descend && visit(p.cell, placed)
             end
         end
     end
@@ -158,7 +136,7 @@ function only_root(oas::Oasis)
     length(rts) == 1 && return rts[1]
     error(
         isempty(rts) ?
-            "No root cell is known; pass `top`, or call `update_roots!` to find the root cells." :
+            "There is no root cell; pass `top` to pick a cell." :
             "There are several root cells ($(join(rts, ", "))); pass `top` to pick one."
     )
 end

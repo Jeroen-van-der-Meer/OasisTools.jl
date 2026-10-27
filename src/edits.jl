@@ -9,24 +9,34 @@ finish_edit(emit, ::CellEdit) = nothing
 # Edits holding mutable state are copied along with the cell they belong to.
 copy_edit(edit::CellEdit) = edit
 
-# Removes all shapes on the given layers.
-struct RemoveShapes <: CellEdit
-    layerNumber::Interval
-    datatypeNumber::Interval
+# Keeps only the shapes for which a function returns `true`.
+struct FilterShapes{F} <: CellEdit
+    f::F
 end
 
-function apply_edit(emit, e::RemoveShapes, s::Shape)
-    (s.layerNumber in e.layerNumber && s.datatypeNumber in e.datatypeNumber) || emit(s)
+function apply_edit(emit, e::FilterShapes, s::Shape)
+    e.f(s) && emit(s)
     return nothing
 end
 
 # Removes all placements of a cell.
 struct RemovePlacements <: CellEdit
-    cellName::Symbol
+    cell::Symbol
 end
 
 function apply_edit(emit, e::RemovePlacements, p::CellPlacement)
-    p.cellName == e.cellName || emit(p)
+    p.cell == e.cell || emit(p)
+    return nothing
+end
+
+# Changes which cell placements refer to.
+struct RenamePlacements <: CellEdit
+    old::Symbol
+    new::Symbol
+end
+
+function apply_edit(emit, e::RenamePlacements, p::CellPlacement)
+    emit(p.cell == e.old ? CellPlacement(e.new, p.location, p.rotation, p.magnification, p.flipped, p.repetition) : p)
     return nothing
 end
 

@@ -23,7 +23,7 @@ end
 IndexSink(track_extent::Bool) = IndexSink(CellPlacement[], Dict(), track_extent, nothing)
 
 function push_element!(sink::IndexSink, shape::Shape)
-    key = (shape.layerNumber, shape.datatypeNumber)
+    key = (shape.layer, shape.datatype)
     counts = get(sink.layers, key, ElementCounts(0, 0))
     sink.layers[key] = ElementCounts(counts.records + 1, counts.instances + nrep(shape.repetition))
     sink.trackExtent && (sink.extent = union_box(sink.extent, shape_extent(shape)))

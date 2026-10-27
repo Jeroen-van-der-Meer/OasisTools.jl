@@ -28,15 +28,15 @@ end
 function write_layername(state::WriterState, layer::Layer)
     write_byte(state, 11) # LAYERNAME
     write_bn_string(state, layer.name)
-    write_interval(state, layer.layerNumber)
-    write_interval(state, layer.datatypeNumber)
+    write_interval(state, layer.layer)
+    write_interval(state, layer.datatype)
 end
 
 function write_textlayername(state::WriterState, layer::Layer)
     write_byte(state, 12) # LAYERNAME
     write_bn_string(state, layer.name)
-    write_interval(state, layer.layerNumber)
-    write_interval(state, layer.datatypeNumber)
+    write_interval(state, layer.layer)
+    write_interval(state, layer.datatype)
 end
 
 # With compression, the contents of a cell go into CBLOCKs of about this many bytes before
@@ -117,7 +117,7 @@ end
 function write_placement(state::WriterState, placement::CellPlacement)
     info_byte = UInt8(0)
 
-    cellname = placement.cellName
+    cellname = placement.cell
     cellname_explicit = cellname != state.mod.placementCell
     if cellname_explicit
         info_byte = set_bit_to_one(info_byte, 1)
@@ -162,7 +162,7 @@ end
 function write_placement_mag_angle(state::WriterState, placement::CellPlacement)
     info_byte = UInt8(0)
 
-    cellname = placement.cellName
+    cellname = placement.cell
     cellname_explicit = cellname != state.mod.placementCell
     if cellname_explicit
         info_byte = set_bit_to_one(info_byte, 1)
@@ -261,14 +261,14 @@ end
 function write_shape(state::WriterState, shape::Shape{Polygon{2, Int64}})
     info_byte = UInt8(0)
 
-    layer_number = shape.layerNumber
+    layer_number = shape.layer
     layer_explicit = layer_number != state.mod.layer
     if layer_explicit
         info_byte = set_bit_to_one(info_byte, 8)
         state.mod.layer = layer_number
     end
 
-    datatype_number = shape.datatypeNumber
+    datatype_number = shape.datatype
     datatype_explicit = datatype_number != state.mod.datatype
     if datatype_explicit
         info_byte = set_bit_to_one(info_byte, 7)
@@ -313,7 +313,7 @@ end
 function write_shape(state::WriterState, shape::Shape{Triangle{2, Int64}})
     tri = shape.shape
     polygon = Polygon([tri[1], tri[2], tri[3]])
-    write_shape(state, Shape(polygon, shape.layerNumber, shape.datatypeNumber, shape.repetition))
+    write_shape(state, Shape(polygon, shape.layer, shape.datatype, shape.repetition))
 end
 
 function write_shape(state::WriterState, shape::Shape{Rect{2, Int64}})
@@ -327,14 +327,14 @@ function write_shape(state::WriterState, shape::Shape{Rect{2, Int64}})
         info_byte = set_bit_to_one(info_byte, 1)
     end
 
-    layer_number = shape.layerNumber
+    layer_number = shape.layer
     layer_explicit = layer_number != state.mod.layer
     if layer_explicit
         info_byte = set_bit_to_one(info_byte, 8)
         state.mod.layer = layer_number
     end
 
-    datatype_number = shape.datatypeNumber
+    datatype_number = shape.datatype
     datatype_explicit = datatype_number != state.mod.datatype
     if datatype_explicit
         info_byte = set_bit_to_one(info_byte, 7)
@@ -393,14 +393,14 @@ end
 function write_shape(state::WriterState, shape::Shape{HyperSphere{2, Int64}})
     info_byte = UInt8(0)
 
-    layer_number = shape.layerNumber
+    layer_number = shape.layer
     layer_explicit = layer_number != state.mod.layer
     if layer_explicit
         info_byte = set_bit_to_one(info_byte, 8)
         state.mod.layer = layer_number
     end
 
-    datatype_number = shape.datatypeNumber
+    datatype_number = shape.datatype
     datatype_explicit = datatype_number != state.mod.datatype
     if datatype_explicit
         info_byte = set_bit_to_one(info_byte, 7)
@@ -448,14 +448,14 @@ end
 function write_shape(state::WriterState, shape::Shape{Path{2, Int64}})
     info_byte = UInt8(0)
 
-    layer_number = shape.layerNumber
+    layer_number = shape.layer
     layer_explicit = layer_number != state.mod.layer
     if layer_explicit
         info_byte = set_bit_to_one(info_byte, 8)
         state.mod.layer = layer_number
     end
 
-    datatype_number = shape.datatypeNumber
+    datatype_number = shape.datatype
     datatype_explicit = datatype_number != state.mod.datatype
     if datatype_explicit
         info_byte = set_bit_to_one(info_byte, 7)
@@ -529,14 +529,14 @@ function write_shape(state::WriterState, shape::Shape{Text})
         state.mod.textString = textstring
     end
 
-    layer_number = shape.layerNumber
+    layer_number = shape.layer
     layer_explicit = layer_number != state.mod.textlayer
     if layer_explicit
         info_byte = set_bit_to_one(info_byte, 8)
         state.mod.textlayer = layer_number
     end
 
-    datatype_number = shape.datatypeNumber
+    datatype_number = shape.datatype
     datatype_explicit = datatype_number != state.mod.texttype
     if datatype_explicit
         info_byte = set_bit_to_one(info_byte, 7)

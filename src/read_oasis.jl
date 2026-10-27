@@ -42,20 +42,8 @@ function oasisread(filename::AbstractString; lazy::Bool = false)
         read_record(record_type, state)
     end
 
-    if lazy
-        # Without decoding the cells, the best we can do to find the root cells is to look for
-        # the S_TOP_CELL property. (`update_roots!` finds them reliably, by decoding the cells'
-        # placements.)
-        find_root_cells!(state)
-    end
-
     oas = Oasis(process_cells(state), state.layers; unit = state.metadata.unit)
-
-    if !lazy
-        load_all_cells!(oas)
-        # Use the recorded cell placements to find the root cells.
-        update_roots!(oas)
-    end
+    lazy || load!(oas)
 
     return oas
 end
@@ -73,32 +61,8 @@ function process_cells(state::FileParserState)
         source = CellSource(
             preprocessed_cell.bytes, state.cellnameReferences, state.textstringReferences
         )
-        cs[i] = Cell(cell_name, source, cell_name in state.metadata.roots)
+        cs[i] = Cell(cell_name, source)
     end
 
     return cs
-end
-
-function find_root_cells!(state::FileParserState)
-    # Look for S_TOP_CELL property and store top cell in parser metadata. We can only do this
-    # after parsing the entire file because both the the value of S_TOP_CELL as well as the word
-    # 'S_TOP_CELL' itself can be stored numerically, and the record that tells you what the
-    # corresponding string should be can occur anywhere in the entire file.
-    for file_property in state.metadata.fileProperties
-        propname_or_number = file_property.nameOrNumber
-        if propname_or_number isa UInt64
-            propname = state.propnameReferences[propname_or_number]
-        else
-            propname = propname_or_number
-        end
-        if propname == :S_TOP_CELL
-            cellname_or_number = first(file_property.valueList)
-            if cellname_or_number isa UInt64
-                cellname = state.propstringReferences[cellname_or_number]
-            else
-                cellname = cellname_or_number
-            end
-            push!(state.metadata.roots, cellname)
-        end
-    end
 end

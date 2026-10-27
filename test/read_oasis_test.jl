@@ -264,7 +264,7 @@ end
         cell = oas["TOP"]
         @test !isloaded(cell)
         @test cell.source.bytes[1] == 21 # Byte corresponding to start of POLYGON record
-        load_cell!(oas, "TOP")
+        load!(oas["TOP"])
         cell = oas["TOP"]
         @test isloaded(cell)
     end
@@ -274,10 +274,8 @@ end
         oas = oasisread(filepath; lazy = true)
         @test oas isa Oasis
         s = Suppressor.@capture_out Base.show(oas)
-        @test s == """
-OASIS file with the following cell hierarchy:
-TOP
-└─ ?"""
+        # Nothing is decoded just to show the file.
+        @test s == "OASIS file with 2 cells, whose hierarchy is known once they are indexed (see `index!`)"
         top_cell = oas["TOP"]
         @test top_cell.source.bytes[1] == 17 # First byte of a PLACEMENT record
         bottom_cell = oas["BOTTOM"]
@@ -300,7 +298,7 @@ TOP
         filepath = joinpath(@__DIR__, "testdata", filename)
         oas = oasisread(filepath; lazy = true)
         @test oas isa Oasis
-        load_cell!(oas, "BOTTOM")
+        load!(oas["BOTTOM"])
         @test isloaded(oas["BOTTOM"])
         @test length(oas["BOTTOM"].shapes) == 1
     end
@@ -316,12 +314,8 @@ TOP
         oas = oasisread(filepath; lazy = true)
         @test oas isa Oasis
         s = Suppressor.@capture_out Base.show(oas)
-        @test s == """
-OASIS file with the following cell hierarchy:
-OTHERTOP
-└─ ?
-TOP
-└─ ?"""
+        # Nothing is decoded just to show the file.
+        @test s == "OASIS file with 2 cells, whose hierarchy is known once they are indexed (see `index!`)"
         @test !isloaded(oas["TOP"])
         @test !isloaded(oas["OTHERTOP"])
     end

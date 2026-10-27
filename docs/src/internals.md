@@ -29,7 +29,7 @@ A single decoder, `CellParserState`, interprets the records of a cell. It doesn'
 - a `ContentsSink` keeps everything, to load a cell;
 - an `IndexSink` keeps placements but only counts shapes, to build a [`CellIndex`](@ref OasisTools.CellIndex);
 - a `ShapeCallback` passes shapes on to a function, for [`foreach_shape`](@ref);
-- a `WriterState` encodes them straight into an output file.
+- a `WriterSink` encodes them into an output file; see [Writing an OASIS file](@ref).
 
 `decode_cell(sink, cell)` feeds a sink from any cell: from memory if the cell is loaded, and from its bytes otherwise, passing everything through the cell's pending edits on the way.
 
@@ -57,53 +57,61 @@ What is known about a cell that isn't loaded comes in tiers, reported by [`tier`
 - **Tier 2:** additionally, the bounding box of the cell's own shapes, which is what [`crop`](@ref) needs.
 - **Tier 3:** the cell is loaded.
 
-Nothing needs to be done up front: functions compute what they need on demand, and keep the index with the cell for later. [`placements`](@ref) and [`layer_counts`](@ref) bring a cell to tier 1, [`extent`](@ref) to tier 2. [`index_cell!`](@ref) and [`index_all_cells!`](@ref) do so explicitly, the latter in parallel. Indexing a cell does decode it, which includes decompressing its compressed blocks, but it doesn't keep its shapes in memory.
+Nothing needs to be done up front: functions compute what they need on demand, and keep the index with the cell for later. [`placements`](@ref) and [`layer_counts`](@ref) bring a cell to tier 1, [`extent`](@ref) to tier 2. [`index!`](@ref) does so explicitly, for a cell or, in parallel, for all cells. Indexing a cell does decode it, which includes decompressing its compressed blocks, but it doesn't keep its shapes in memory.
 
 ### Loading cells on demand
 
-To load the shapes and placements of a cell into memory, use [`load_cell!`](@ref):
+To load the shapes and placements of a cell into memory, use [`load!`](@ref):
 
 ```julia
 oas = oasisread("large_chip.oas"; lazy=true)
-load_cell!(oas, :StandardCell_NAND2)
+load!(oas[:StandardCell_NAND2])
 shapes(oas[:StandardCell_NAND2])
 ```
 
-You can also use the non-mutating [`load_cell`](@ref) to get a loaded copy of a cell. To load all cells at once (equivalent to eager mode), use [`load_all_cells!`](@ref).
+To load all cells at once (equivalent to eager mode), use `load!(oas)`.
 
 [`shapes`](@ref) also works on a cell that isn't loaded, but decodes its shapes afresh every time without keeping them. [`foreach_shape`](@ref) goes through them one at a time, for cells too large to hold in memory.
 
 ### Editing cells that aren't loaded
 
-Changes to a cell that isn't loaded are recorded as *edits*, rather than loading the cell to carry them out. Whenever the cell is decoded, everything decoded from it passes through its edits: removing shapes on a layer ([`remove_layer!`](@ref) with `cascade = true`), removing placements of a cell ([`remove_cell!`](@ref) with `cascade = true`), adding shapes or placements ([`add_shape!`](@ref), [`add_placement!`](@ref)), and clipping ([`crop`](@ref)). Edits are thus reflected in indexes, in [`shapes`](@ref), when the cell is loaded, and when it is written. Where an index shows that an edit wouldn't change a cell, the cell is left alone.
+Changes to a cell that isn't loaded are recorded as *edits*, rather than loading the cell to carry them out. Whenever the cell is decoded, everything decoded from it passes through its edits: keeping only some shapes ([`filter_shapes!`](@ref)), removing or renaming the placements of a cell ([`remove_cell!`](@ref), [`rename_cell!`](@ref)), adding shapes or placements ([`add_shape!`](@ref), [`add_placement!`](@ref)), and clipping ([`crop`](@ref)). Edits are thus reflected in indexes, in [`shapes`](@ref), when the cell is loaded, and when it is written. Where an index shows that an edit wouldn't change a cell, the cell is left alone.
 
 ### Cropping
 
 [`crop`](@ref) uses hierarchical bounding boxes ([`extent`](@ref)) to sort every placement into one of three groups: entirely inside the window (kept as it is), entirely outside (dropped), or crossing its edge. Cells crossing the edge are replaced by cropped copies, which for cells that aren't loaded consist of the original bytes plus edits that clip the shapes and replace the placements. Nothing is loaded in the process.
 
-### Root cell detection
+### Root cells
 
-Root cells (cells that are not placed inside any other cell) are detected differently depending on the loading mode:
+Root cells are those that are not placed inside any other cell. [`roots`](@ref) works them out from the placements of all cells, bringing cells that aren't loaded to tier 1 to find them, so the answer always reflects any edits made since.
 
-- Eager mode examines the fully parsed placement data: any cell that is not referenced by a PLACEMENT record in another cell is marked as a root. This is reliable because all placements are known.
-
-- Lazy mode doesn't decode any placements when opening a file, so it falls back to reading `S_TOP_CELL` file properties. As described in [The OASIS File Format](@ref), `S_TOP_CELL` is an *optional* standard property; there is no guarantee that a given OASIS file includes it. Calling [`update_roots!`](@ref) finds the root cells reliably, by bringing every cell to tier 1.
+Showing an [`Oasis`](@ref) object never decodes anything, so it only shows the cell hierarchy if the placements of all cells are already known, for instance because they were loaded or indexed. Similarly, [`oasiswrite`](@ref) only records the root cells in the optional `S_TOP_CELL` property if it can do so without decoding anything.
 
 ## Writing an OASIS file
 
-OasisTools.jl contains limited writing functionality. The entry point for writing is [`oasiswrite`](@ref). The pipeline:
+The entry point for writing is [`oasiswrite`](@ref). The pipeline:
 
-1. **Buffered output.** A `WriterState` is created with a large output buffer (16 MB by default). Records are serialized into the buffer and flushed to disk in batches, minimizing the number of write system calls.
+1. **A temporary file.** The output goes to a temporary file in the same directory, which replaces the target once it is complete. A failed write thus leaves an existing file untouched, and the target may even be the file that cells which aren't loaded are being read from: on Linux and macOS, those cells keep seeing the original contents.
 
-2. **Header and metadata.** The magic bytes and START record are written first, followed by file-level properties that declare root cells (`S_TOP_CELL`). Cell name references, property names, and layer names are written inside a CBLOCK for compression.
+2. **Buffered output.** A `WriterState` is created with a large output buffer (16 MB by default). Records are serialized into the buffer and flushed to disk in batches, minimizing the number of write system calls.
 
-3. **Cell writing.** Each cell is written in turn:
+3. **Header and name tables.** The magic bytes and START record are written first, followed by file-level properties that declare root cells (`S_TOP_CELL`). Cell names, property names, and layer names follow in a CBLOCK.
+
+4. **Cells.** Each cell is written in turn, starting with its CELL record:
    - **Loaded cells** are serialized from their in-memory shapes and placements.
-   - **Cells that aren't loaded and have no pending edits** are handled via *copywriting*: the raw bytes are parsed record by record and re-serialized to the output, allowing numeric cell name references to be remapped without fully decoding the cell's geometry. This enables round-tripping files through lazy loading without materializing every cell.
-   - **Cells with pending edits** are decoded record by record, passed through their edits, and encoded straight into the output, so that only one record is held in memory at a time.
+   - **Cells that aren't loaded and have no pending edits** are handled via *copywriting*: the raw bytes are parsed record by record and copied to the output, translating only the numeric references to cell names and text strings, which are specific to each file. This enables round-tripping files through lazy loading without decoding the geometry of every cell.
+   - **Cells with pending edits** are decoded record by record, passed through their edits, and encoded straight into the output, without ever holding the whole cell in memory.
 
-4. **Footer.** The END record closes the file.
+5. **Footer.** The END record closes the file, padded with NUL bytes to exactly 256 bytes as the specification requires.
 
-### Compressed block writing
+### Modal variables when writing
 
-The `write_cblock` function captures output by creating a temporary `WriterState` backed by an in-memory `IOBuffer`. Records are written to this temporary state as usual. Once done, the accumulated bytes are compressed with DEFLATE and written as a CBLOCK record to the main output.
+Just like a reader, the writer keeps track of modal variables, so that it can leave out fields a reader can infer from earlier records. It resets them at every CELL record, as readers do, and treats them as undefined until they have been written out once. The first records of a cell therefore always spell out their layer, datatype, and so on.
+
+For the same reason, the first path in a cell states explicitly that its ends are flush. Paths are read with any extensions folded into their end points, so they always end flush when written.
+
+### Compressed blocks when writing
+
+With compression enabled (the default; see the `compress` keyword of [`oasiswrite`](@ref)), the records of a cell are written to a temporary `WriterState` backed by an in-memory `IOBuffer`, which shares its modal variables and name references with the main one. Whenever more than about 1 MiB has built up, and at the end of the cell, the accumulated bytes are compressed with DEFLATE and written to the main output as a CBLOCK record. This keeps memory use bounded even for very large cells; as DEFLATE only looks back 32 KiB, larger blocks would hardly compress any better.
+
+Blocks only ever end between records, as a record may not be split across CBLOCKs, and the CELL records themselves stay outside of them, as the specification requires. Cells copied from another file are compressed afresh, rather than keeping their original CBLOCKs, as the name references inside them get translated.

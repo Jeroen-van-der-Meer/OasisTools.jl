@@ -71,7 +71,7 @@
         source = OasisTools.CellSource(
             view(bytes, 1:length(bytes)), Dict{UInt64, Symbol}(), Dict{UInt64, Symbol}()
         )
-        cell = Cell(:TOP, source, true)
+        cell = Cell(:TOP, source)
 
         state = OasisTools.WriterState(tempname(), 1024)
         state.cellnameReferences[:TOP] = 123
@@ -79,7 +79,7 @@
         @test read_and_reset(state, state.pos - 1) == vcat(UInt8[0x0d, 0x7b], bytes)
         close(state.io)
 
-        @test length(OasisTools.load_cell(cell).shapes) == 1
+        @test length(load!(cell).shapes) == 1
     end
 end
 
@@ -124,8 +124,8 @@ end
         @test bottom_cell.name == :BOTTOM
         @test length(bottom_cell.shapes) == 1
         rectangle = bottom_cell.shapes[1]
-        layer_number = rectangle.layerNumber
-        datatype_number = rectangle.datatypeNumber
+        layer_number = rectangle.layer
+        datatype_number = rectangle.datatype
         layername = name(layer(oas, layer_number, datatype_number))
         @test layername == :TOP
         rectangle_shape = rectangle.shape
@@ -308,7 +308,7 @@ end
         oas = Oasis()
         rect = Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(10, 10))
         shape = Shape(rect, UInt64(1), UInt64(0), nothing)
-        cell = Cell(:CBLOCK_TEST, [shape], CellPlacement[], true)
+        cell = Cell(:CBLOCK_TEST, [shape], CellPlacement[])
         add_cell!(oas, cell)
         add_layer!(oas, Layer(:M1, 1, 0))
         path = tempname()
@@ -333,9 +333,9 @@ end
         rect2 = Rect{2, Int64}(Point{2, Int64}(10, 10), Point{2, Int64}(20, 20))
         s1 = Shape(rect1, UInt64(1), UInt64(0), nothing)
         s2 = Shape(rect2, UInt64(2), UInt64(1), nothing)
-        cell1 = Cell(:CELL_A, [s1], CellPlacement[], true)
+        cell1 = Cell(:CELL_A, [s1], CellPlacement[])
         placement = CellPlacement(:CELL_A, Point{2, Int64}(100, 200), 0.0, 1.0, false, nothing)
-        cell2 = Cell(:CELL_B, [s2], [placement], true)
+        cell2 = Cell(:CELL_B, [s2], [placement])
         add_cell!(oas, cell1)
         add_cell!(oas, cell2)
         add_layer!(oas, Layer(:L1, 1, 0))
@@ -348,7 +348,7 @@ end
         @test name(oas2.layers[1]) == :L1
         @test name(oas2.layers[2]) == :L2
         @test shapes(oas2["CELL_A"])[1].shape isa Rect{2, Int64}
-        @test placements(oas2["CELL_B"])[1].cellName == :CELL_A
+        @test placements(oas2["CELL_B"])[1].cell == :CELL_A
     end
 end
 
@@ -361,7 +361,7 @@ end
         ]
         polygon = Polygon(pts)
         shape = Shape(polygon, UInt64(1), UInt64(0), nothing)
-        cell = Cell(:POLY, [shape], CellPlacement[], true)
+        cell = Cell(:POLY, [shape], CellPlacement[])
         add_cell!(oas, cell)
         add_layer!(oas, Layer(:M1, 1, 0))
         path = tempname()
@@ -371,8 +371,8 @@ end
         @test length(shapes(cell2)) == 1
         s = shapes(cell2)[1]
         @test s.shape isa Polygon{2, Int64}
-        @test s.layerNumber == 1
-        @test s.datatypeNumber == 0
+        @test s.layer == 1
+        @test s.datatype == 0
         @test s.shape.exterior == pts
         @test isnothing(s.repetition)
     end
@@ -380,7 +380,7 @@ end
         oas = Oasis()
         rect = Rect{2, Int64}(Point{2, Int64}(10, 20), Point{2, Int64}(30, 40))
         shape = Shape(rect, UInt64(2), UInt64(1), nothing)
-        cell = Cell(:RECT, [shape], CellPlacement[], true)
+        cell = Cell(:RECT, [shape], CellPlacement[])
         add_cell!(oas, cell)
         path = tempname()
         oasiswrite(path, oas)
@@ -396,7 +396,7 @@ end
         oas = Oasis()
         rect = Rect{2, Int64}(Point{2, Int64}(5, 5), Point{2, Int64}(50, 50))
         shape = Shape(rect, UInt64(1), UInt64(0), nothing)
-        cell = Cell(:SQR, [shape], CellPlacement[], true)
+        cell = Cell(:SQR, [shape], CellPlacement[])
         add_cell!(oas, cell)
         path = tempname()
         oasiswrite(path, oas)
@@ -409,7 +409,7 @@ end
         oas = Oasis()
         circle = HyperSphere{2, Int64}(Point{2, Int64}(100, 200), 50)
         shape = Shape(circle, UInt64(3), UInt64(0), nothing)
-        cell = Cell(:CIRC, [shape], CellPlacement[], true)
+        cell = Cell(:CIRC, [shape], CellPlacement[])
         add_cell!(oas, cell)
         path = tempname()
         oasiswrite(path, oas)
@@ -427,7 +427,7 @@ end
         ]
         path = OasisTools.Path(pts, Int64(20))
         shape = Shape(path, UInt64(1), UInt64(0), nothing)
-        cell = Cell(:PATH, [shape], CellPlacement[], true)
+        cell = Cell(:PATH, [shape], CellPlacement[])
         add_cell!(oas, cell)
         path = tempname()
         oasiswrite(path, oas)
@@ -441,7 +441,7 @@ end
         oas = Oasis()
         text = OasisTools.Text(:hello, Point{2, Int64}(50, 60), nothing)
         shape = Shape(text, UInt64(10), UInt64(0), nothing)
-        cell = Cell(:TXT, [shape], CellPlacement[], true)
+        cell = Cell(:TXT, [shape], CellPlacement[])
         add_cell!(oas, cell)
         path = tempname()
         oasiswrite(path, oas)
@@ -457,23 +457,23 @@ end
         rect2 = Rect{2, Int64}(Point{2, Int64}(20, 20), Point{2, Int64}(30, 30))
         s1 = Shape(rect1, UInt64(1), UInt64(0), nothing)
         s2 = Shape(rect2, UInt64(2), UInt64(1), nothing)
-        cell = Cell(:MULTI, [s1, s2], CellPlacement[], true)
+        cell = Cell(:MULTI, [s1, s2], CellPlacement[])
         add_cell!(oas, cell)
         path = tempname()
         oasiswrite(path, oas)
         oas2 = oasisread(path)
         cell2 = oas2["MULTI"]
         @test length(shapes(cell2)) == 2
-        @test shapes(cell2)[1].layerNumber == 1
-        @test shapes(cell2)[2].layerNumber == 2
-        @test shapes(cell2)[2].datatypeNumber == 1
+        @test shapes(cell2)[1].layer == 1
+        @test shapes(cell2)[2].layer == 2
+        @test shapes(cell2)[2].datatype == 1
     end
     @testset "Shape with repetition" begin
         oas = Oasis()
         rect = Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(5, 5))
         rep = [Point{2, Int64}(0, 0), Point{2, Int64}(10, 0), Point{2, Int64}(20, 0)]
         shape = Shape(rect, UInt64(1), UInt64(0), rep)
-        cell = Cell(:REP, [shape], CellPlacement[], true)
+        cell = Cell(:REP, [shape], CellPlacement[])
         add_cell!(oas, cell)
         path = tempname()
         oasiswrite(path, oas)
@@ -485,9 +485,9 @@ end
         oas = Oasis()
         rect = Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(10, 10))
         shape = Shape(rect, UInt64(1), UInt64(0), nothing)
-        inner = Cell(:INNER, Shape[], CellPlacement[], false)
+        inner = Cell(:INNER, Shape[], CellPlacement[])
         placement = CellPlacement(:INNER, Point{2, Int64}(50, 50), 0.0, 1.0, false, nothing)
-        outer = Cell(:OUTER, [shape], [placement], true)
+        outer = Cell(:OUTER, [shape], [placement])
         add_cell!(oas, inner)
         add_cell!(oas, outer)
         path = tempname()
@@ -495,7 +495,7 @@ end
         oas2 = oasisread(path)
         cell2 = oas2["OUTER"]
         @test length(placements(cell2)) == 1
-        @test placements(cell2)[1].cellName == :INNER
+        @test placements(cell2)[1].cell == :INNER
         @test length(shapes(cell2)) == 1
         @test shapes(cell2)[1].shape isa Rect{2, Int64}
     end
@@ -507,7 +507,7 @@ end
         ]
         polygon = Polygon(pts)
         shape = Shape(polygon, UInt64(1), UInt64(0), nothing)
-        cell = Cell(:NEG, [shape], CellPlacement[], true)
+        cell = Cell(:NEG, [shape], CellPlacement[])
         add_cell!(oas, cell)
         path = tempname()
         oasiswrite(path, oas)
@@ -535,10 +535,10 @@ end
         for cell_name in (:A, :B)
             s = only(shapes(oas2[cell_name]))
             @test s.shape == rect
-            @test s.layerNumber == 3
-            @test s.datatypeNumber == 2
+            @test s.layer == 3
+            @test s.datatype == 2
             p = only(placements(oas2[cell_name]))
-            @test p.cellName == :C
+            @test p.cell == :C
             @test p.location == Point{2, Int64}(7, 8)
         end
     end
@@ -573,7 +573,7 @@ end
         oasiswrite(path, oas)
         @test contents(oasisread(path)) == expected
         # The lazy cells keep reading the original contents.
-        load_all_cells!(oas)
+        load!(oas)
         @test contents(oas) == expected
     end
     if !Sys.iswindows()
