@@ -19,20 +19,23 @@ function oasiswrite(filename::AbstractString, oas::Oasis; bufsize = 16 * 1024 * 
 
     state = WriterState(oas, filename, bufsize)
 
-    write_bytes(state, MAGIC_BYTES)
-    write_start(state, unit)
-    write_roots(state)
-    write_cblock(state) do cblock_state
-        write_propname(cblock_state, :S_TOP_CELL)
-        construct_and_write_cellname_references(cblock_state)
-        write_layers(cblock_state)
-    end
-    write_cells(state)
-    write_end(state)
+    try
+        write_bytes(state, MAGIC_BYTES)
+        write_start(state, unit)
+        write_roots(state)
+        write_cblock(state) do cblock_state
+            write_propname(cblock_state, :S_TOP_CELL)
+            construct_and_write_cellname_references(cblock_state)
+            write_layers(cblock_state)
+        end
+        write_cells(state)
+        write_end(state)
 
-    # Write remaining bytes in buffer.
-    write(state.io, @view state.buf[1:(state.pos - 1)])
-    close(state.io)
+        # Write remaining bytes in buffer.
+        write(state.io, @view state.buf[1:(state.pos - 1)])
+    finally
+        close(state.io)
+    end
 end
 
 function write_roots(state::WriterState)

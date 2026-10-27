@@ -34,21 +34,23 @@ function write_signed_integer(state, int::Integer)
 end
 
 function write_real(state, real::Real)
-    real_rounded = round(Int64, real)
-    if real_rounded == real
-        if real >= 0
+    value = Float64(real)
+    # Excludes NaN, Inf and anything that doesn't survive the trip through Int64.
+    if isinteger(value) && typemin(Int64) < value <= typemax(Int64)
+        int = Int64(value)
+        if int >= 0
             # Write positive whole number
             write_byte(state, 0x00)
-            wui(state, real_rounded)
+            wui(state, int)
         else
             # Write negative whole number
             write_byte(state, 0x01)
-            wui(state, -real_rounded)
+            wui(state, -int)
         end
     else
         # Write Float64
         write_byte(state, 0x07)
-        write_bytes(state, reinterpret(UInt64, real))
+        write_bytes(state, reinterpret(UInt64, value))
     end
 end
 
@@ -208,16 +210,17 @@ function write_bytes(state, bytes::AbstractVector{UInt8}, nbytes::Integer = leng
     count = 0
     while true
         writeable = state.bufsize - state.pos + 1
+        remaining = nbytes - count
         # If there's enough space, simply write out all bytes into the buffer.
-        if writeable > nbytes - count
-            @inbounds state.buf[state.pos:(state.pos + nbytes - count - 1)] .=
-                bytes[(count + 1):end]
-            state.pos += nbytes - count
+        if writeable > remaining
+            @inbounds state.buf[state.pos:(state.pos + remaining - 1)] .=
+                @view bytes[(count + 1):nbytes]
+            state.pos += remaining
             return
         # If not, write out until the end of the buffer, flush the buffer, then continue.
         else
             @inbounds state.buf[state.pos:(state.pos + writeable - 1)] .=
-                bytes[(count + 1):(count + writeable)]
+                @view bytes[(count + 1):(count + writeable)]
             write_buffer(state)
             count += writeable
         end

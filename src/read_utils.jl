@@ -88,7 +88,11 @@ function is_end_of_cell(state, next_record::UInt8)
         comp_byte_count = rui(state)
         comp_bytes = @view state.buf[state.pos:(state.pos + comp_byte_count - 1)]
         z = DeflateDecompressorStream(IOBuffer(comp_bytes))
-        first_record_in_cblock = read(z, UInt8)
+        first_record_in_cblock = try
+            read(z, UInt8)
+        finally
+            close(z)
+        end
         return is_end_of_cell(state, first_record_in_cblock)
     else
         return false

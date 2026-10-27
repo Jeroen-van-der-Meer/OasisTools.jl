@@ -39,7 +39,6 @@ Cell TOP with 5 placements and 0 shapes
 See also [`load_cell`](@ref).
 """
 function load_cell!(oas::Oasis, cell_name::Symbol)
-    cell = get_cell(oas, cell_name)
     cell_index = find_cell(oas, cell_name)
     isnothing(cell_index) && error("Could not find cell with name $cell_name")
     cell = oas.cells[cell_index]
@@ -80,7 +79,7 @@ See also [`load_cell!`](@ref).
 function load_cell(lazy_cell::LazyCell)
     state = CellParserState(lazy_cell)
     nbytes = length(lazy_cell.bytes)
-    while state.pos < nbytes
+    while state.pos <= nbytes
         record_type = read_byte(state)
         read_record(record_type, state)
     end

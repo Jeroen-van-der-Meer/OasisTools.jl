@@ -229,9 +229,12 @@ function read_polygon(state::CellParserState)
     x, y = read_or_modal_xy(state, Val(:geometryX), Val(:geometryY), info_byte, 4)
     repetition = read_repetition(state, info_byte, 6)
 
-    cumsum!(point_list, point_list)
-    point_list .+= Point{2, Int64}(x, y)
-    polygon = Polygon(point_list)
+    # Accumulate into a fresh vector; `point_list` may be the modal variable, which has to keep
+    # holding the original deltas for subsequent records to reuse.
+    vertices = similar(point_list)
+    cumsum!(vertices, point_list)
+    vertices .+= Point{2, Int64}(x, y)
+    polygon = Polygon(vertices)
     shape = Shape(polygon, layer_number, datatype_number, repetition)
     push!(state.shapes, shape)
 end
@@ -282,25 +285,28 @@ function read_path(state::CellParserState)
     # parameters. The unfortunate downside is that there's no guarantee that the resulting point
     # list will properly snap within the specified grid, and as such rounding errors may occur.
     # That said, I cannot imagine this setting is used often in practice.
+    # Work on a copy; `point_list` may be the modal variable, which has to keep holding the
+    # original deltas for subsequent records to reuse.
+    vertices = copy(point_list)
     if !iszero(start_extension)
-        first_delta = point_list[2]
+        first_delta = vertices[2]
         first_delta_normalized = first_delta ./ sqrt(first_delta[1]^2 + first_delta[2]^2)
         adjustment_for_start = first_delta_normalized * start_extension
         adjustment_for_start_rounded = round.(Int64, adjustment_for_start)
-        point_list[2] += adjustment_for_start_rounded
+        vertices[2] += adjustment_for_start_rounded
         x -= adjustment_for_start_rounded[1]
         y -= adjustment_for_start_rounded[2]
     end
     if !iszero(end_extension)
-        last_delta = point_list[end]
+        last_delta = vertices[end]
         last_delta_normalized = last_delta ./ sqrt(last_delta[1]^2 + last_delta[2]^2)
         adjustment_for_end = last_delta_normalized * end_extension
         adjustment_for_end_rounded = round.(Int64, adjustment_for_end)
-        point_list[end] += adjustment_for_end_rounded
+        vertices[end] += adjustment_for_end_rounded
     end
-    cumsum!(point_list, point_list)
-    point_list .+= Point{2, Int64}(x, y)
-    path = Path(point_list, 2 * signed(halfwidth))
+    cumsum!(vertices, vertices)
+    vertices .+= Point{2, Int64}(x, y)
+    path = Path(vertices, 2 * signed(halfwidth))
     shape = Shape(path, layer_number, datatype_number, repetition)
     push!(state.shapes, shape)
 end

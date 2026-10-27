@@ -58,6 +58,30 @@
             0x02, 0xec, 0x2c
         ]
     end
+    @testset "Trailing single-byte record" begin
+        # The last record of a cell may be a single byte, which puts it right at the edge of the
+        # cell's byte range.
+        bytes = UInt8[
+            0x14, 0x7b,             # RECTANGLE; layer, datatype, width, height, x, y explicit
+            0x01, 0x00,             # layer 1, datatype 0
+            0x0a, 0x14,             # width 10, height 20
+            0x00, 0x00,             # x = 0, y = 0
+            0x00                    # PAD
+        ]
+        cell = OasisTools.LazyCell(
+            :TOP, view(bytes, 1:length(bytes)),
+            Dict{UInt64, Symbol}(), Dict{UInt64, Symbol}(),
+            1000.0, true
+        )
+
+        state = OasisTools.WriterState("temp", 1024)
+        state.cellnameReferences[:TOP] = 123
+        OasisTools.write_cell(state, cell)
+        @test read_and_reset(state, state.pos - 1) == vcat(UInt8[0x0d, 0x7b], bytes)
+        close(state.io)
+
+        @test length(OasisTools.load_cell(cell).shapes) == 1
+    end
 end
 
 @testset "Write lazy OASIS files" begin
@@ -66,7 +90,8 @@ end
     # the same contents.
     # Note: Between each subsequent @testset, we run GC.gc(). This is needed because
     # `oas = oasisread("temp")` implicitly casts an mmap onto the file `"temp"`, which causes
-    # the OS to lock the file until `oas` is garbage-collected.
+    # the OS to lock the file until `oas` is garbage-collected. The same applies between the
+    # top-level testsets below, since each one ends with a live mmap on `"temp"`.
     @testset "Polygon" begin
         filename = "polygon.oas"
         filepath = joinpath(@__DIR__, "testdata", filename)
@@ -279,6 +304,8 @@ TOP"""
     end
 end
 
+GC.gc()
+
 @testset "CBLOCK writing" begin
     @testset "Metadata is wrapped in a CBLOCK" begin
         oas = Oasis()
@@ -326,6 +353,8 @@ end
         @test placements(oas2["CELL_B"])[1].cellName == :CELL_A
     end
 end
+
+GC.gc()
 
 @testset "Write Cells with shapes" begin
     @testset "Polygon" begin

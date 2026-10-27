@@ -1,7 +1,7 @@
 function write_start(state::WriterState, unit::Float64)
     write_byte(state, 1) # START
     write_bn_string(state, "1.0")
-    write_real(state, 1e6 / unit)
+    write_real(state, unit) # Convention: Grid steps per micron.
     write_byte(state, 0) # offset-flag
     for _ in 1:12
         write_byte(state, 0x00) # table-offsets
@@ -64,7 +64,7 @@ function write_cell(state::WriterState, cell::LazyCell)
     # lazily parsing a cell.
     cell_parser_state = LazyCellParserState(cell.bytes, 1)
     nbytes = length(cell.bytes)
-    while cell_parser_state.pos < nbytes
+    while cell_parser_state.pos <= nbytes
         record_type = read_byte(cell_parser_state)
         copywrite_record(record_type, state, cell, cell_parser_state)
     end
@@ -322,6 +322,7 @@ function write_shape(state::WriterState, shape::Shape{Rect{2, Int64}})
         state.mod.geometryW = width
     end
 
+    height_explicit = false
     if is_square
         state.mod.geometryH = width
     else
@@ -358,7 +359,7 @@ function write_shape(state::WriterState, shape::Shape{Rect{2, Int64}})
     layer_explicit && wui(state, layer_number)
     datatype_explicit && wui(state, datatype_number)
     width_explicit && wui(state, width)
-    (!is_square && height_explicit) && wui(state, height)
+    height_explicit && wui(state, height)
     x_explicit && write_signed_integer(state, x)
     y_explicit && write_signed_integer(state, y)
     has_repetition && write_repetition(state, rep)

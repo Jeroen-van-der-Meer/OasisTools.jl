@@ -316,3 +316,59 @@ TOP
         @test oas isa Oasis
     end
 end
+
+@testset "Modal point lists" begin
+    # A record that omits its point list reuses the modal one. The modal point list holds
+    # deltas, so it must survive the conversion to absolute coordinates unscathed.
+    function parse_cell_bytes(bytes)
+        state = CellParserState(bytes)
+        nbytes = length(bytes)
+        while state.pos <= nbytes
+            record_type = OasisTools.read_byte(state)
+            OasisTools.read_record(record_type, state)
+        end
+        return state
+    end
+
+    @testset "Polygon" begin
+        state = parse_cell_bytes(UInt8[
+            0x15, 0x3b,             # POLYGON; layer, datatype, point list, x and y explicit
+            0x01, 0x00,             # layer 1, datatype 0
+            0x04, 0x03,             # g-delta point list with three deltas
+            0xc0, 0x0c,             # east 100
+            0xc2, 0x0c,             # north 100
+            0xc4, 0x0c,             # west 100
+            0x00, 0x00,             # x = 0, y = 0
+            0x15, 0x18,             # POLYGON; only x and y explicit, so point list is modal
+            0xd0, 0x0f, 0x00        # x = 1000, y = 0
+        ])
+        @test length(state.shapes) == 2
+        @test state.shapes[1].shape.exterior == Point{2, Int64}[
+            (0, 0), (100, 0), (100, 100), (0, 100)
+        ]
+        @test state.shapes[2].shape.exterior == Point{2, Int64}[
+            (1000, 0), (1100, 0), (1100, 100), (1000, 100)
+        ]
+    end
+
+    @testset "Path" begin
+        state = parse_cell_bytes(UInt8[
+            0x16, 0x7b,             # PATH; layer, datatype, halfwidth, point list, x, y
+            0x02, 0x00,             # layer 2, datatype 0
+            0x05,                   # halfwidth 5
+            0x04, 0x02,             # g-delta point list with two deltas
+            0xc0, 0x0c,             # east 100
+            0xc2, 0x0c,             # north 100
+            0x00, 0x00,             # x = 0, y = 0
+            0x16, 0x18,             # PATH; only x and y explicit, so point list is modal
+            0xd0, 0x0f, 0x00        # x = 1000, y = 0
+        ])
+        @test length(state.shapes) == 2
+        @test state.shapes[1].shape.points == Point{2, Int64}[(0, 0), (100, 0), (100, 100)]
+        @test state.shapes[2].shape.points == Point{2, Int64}[
+            (1000, 0), (1100, 0), (1100, 100)
+        ]
+        @test state.shapes[1].shape.width == 10
+        @test state.shapes[2].shape.width == 10
+    end
+end
