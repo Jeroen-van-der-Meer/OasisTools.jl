@@ -26,7 +26,7 @@ Plot a cell using Makie.
 function OasisTools.plot_cell(cell::Cell)
     fig = Figure()
     ax = Axis(fig[1, 1])
-    for shape in cell.shapes
+    for shape in shapes(cell)
         plot_shape!(ax, shape)
     end
     return fig

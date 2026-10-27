@@ -74,7 +74,7 @@ function read_layername(state::FileParserState)
 end
 
 function read_cell(state::FileParserState, name_or_number::Union{Symbol, UInt64})
-    cell_state = LazyCellParserState(state)
+    cell_state = SkipParserState(state)
     start_byte = cell_state.pos
     while true
         current_pos = cell_state.pos
@@ -133,7 +133,7 @@ function read_placement(state::CellParserState)
     repetition = read_repetition(state, info_byte, 5)
     is_flipped = bit_is_one(info_byte, 8)
     placement = CellPlacement(cellname, location, rotation, 1.0, is_flipped, repetition)
-    push!(state.placements, placement)
+    push_element!(state.sink, placement)
 end
 
 function read_placement_mag_angle(state::CellParserState)
@@ -167,7 +167,7 @@ function read_placement_mag_angle(state::CellParserState)
     repetition = read_repetition(state, info_byte, 5)
     is_flipped = bit_is_one(info_byte, 8)
     placement = CellPlacement(cellname, location, rotation, magnification, is_flipped, repetition)
-    push!(state.placements, placement)
+    push_element!(state.sink, placement)
 end
 
 function read_text(state::CellParserState)
@@ -194,7 +194,7 @@ function read_text(state::CellParserState)
 
     text = Text(textstring, Point{2, Int64}(x, y), repetition)
     shape = Shape(text, textlayer_number, texttype_number, repetition)
-    push!(state.shapes, shape)
+    push_element!(state.sink, shape)
 end
 
 function read_rectangle(state::CellParserState)
@@ -218,7 +218,7 @@ function read_rectangle(state::CellParserState)
     size = Point{2, Int64}(width, height)
     rectangle = Rect{2, Int64}(lower_left_corner, size)
     shape = Shape(rectangle, layer_number, datatype_number, repetition)
-    push!(state.shapes, shape)
+    push_element!(state.sink, shape)
 end
 
 function read_polygon(state::CellParserState)
@@ -236,7 +236,7 @@ function read_polygon(state::CellParserState)
     vertices .+= Point{2, Int64}(x, y)
     polygon = Polygon(vertices)
     shape = Shape(polygon, layer_number, datatype_number, repetition)
-    push!(state.shapes, shape)
+    push_element!(state.sink, shape)
 end
 
 function read_path(state::CellParserState)
@@ -308,7 +308,7 @@ function read_path(state::CellParserState)
     vertices .+= Point{2, Int64}(x, y)
     path = Path(vertices, 2 * signed(halfwidth))
     shape = Shape(path, layer_number, datatype_number, repetition)
-    push!(state.shapes, shape)
+    push_element!(state.sink, shape)
 end
 
 function read_trapezoid(state::CellParserState, delta_a_explicit::Bool, delta_b_explicit::Bool)
@@ -351,7 +351,7 @@ function read_trapezoid(state::CellParserState, delta_a_explicit::Bool, delta_b_
     vertices .+= Point{2, Int64}(x, y)
     trapezoid = Polygon(vertices)
     shape = Shape(trapezoid, layer_number, datatype_number, repetition)
-    push!(state.shapes, shape)
+    push_element!(state.sink, shape)
 end
 
 ctrapezoid_vertices_0(w::UInt64, h::UInt64) = [
@@ -489,7 +489,7 @@ function read_ctrapezoid(state::CellParserState)
         ctrapezoid = Rect{2, Int64}(vertices[1], vertices[2] - vertices[1])
     end
     shape = Shape(ctrapezoid, layer_number, datatype_number, repetition)
-    push!(state.shapes, shape)
+    push_element!(state.sink, shape)
 end
 
 function read_circle(state::CellParserState)
@@ -503,7 +503,7 @@ function read_circle(state::CellParserState)
     center = Point{2, Int64}(x, y)
     circle = HyperSphere{2, Int64}(center, radius)
     shape = Shape(circle, layer_number, datatype_number, repetition)
-    push!(state.shapes, shape)
+    push_element!(state.sink, shape)
 end
 
 function read_property(state::FileParserState)
@@ -603,7 +603,7 @@ function read_record(record_type::UInt8, state::CellParserState)
     parse_error(state, "Unknown cell-level record type $record_type")
 end
 
-function read_record(record_type::UInt8, state::LazyCellParserState)
+function read_record(record_type::UInt8, state::SkipParserState)
     # Switch statements have been shuffled corresponding to how common each record type is.
     record_type == 17 && return skip_placement(state) # PLACEMENT
     record_type == 20 && return skip_rectangle(state) # RECTANGLE

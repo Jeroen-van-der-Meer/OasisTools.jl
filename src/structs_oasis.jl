@@ -258,8 +258,6 @@ function expand(p::CellPlacement)
     )
 end
 
-abstract type AbstractCell end
-
 """
     ShapeStore()
     ShapeStore(shapes)
@@ -345,26 +343,103 @@ end
 Base.copy(s::ShapeStore) = ShapeStore(map(copy, shape_vectors(s))...)
 
 """
+    struct CellSource
+
+Where the contents of a cell that hasn't been loaded live: the bytes of its CELL record in the
+memory-mapped file, along with the file's reference tables needed to interpret them.
+"""
+struct CellSource
+    bytes::SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{Int64}}, true}
+    cellnameReferences::Dict{UInt64, Symbol}
+    textstringReferences::Dict{UInt64, Symbol}
+end
+
+"""
+    struct ElementCounts
+
+How many records describe some group of elements, and how many instances those records
+amount to once their repetitions are expanded.
+"""
+struct ElementCounts
+    records::Int64
+    instances::Int64
+end
+
+"""
+    struct CellIndex
+
+Summary of the contents of a cell, which can be collected without keeping its shapes in
+memory. See [`index_cell!`](@ref).
+
+# Properties
+
+- `placements::Vector{CellPlacement}`: All placements in the cell.
+- `layers::Dict{Tuple{UInt64, UInt64}, ElementCounts}`: For every `(layer, datatype)` pair
+  that the cell's shapes use, how many shapes there are. Texts are counted under their text
+  layer and text type.
+- `hasExtent::Bool`: Whether `extent` was computed.
+- `extent::Union{Nothing, Rect{2, Int64}}`: Bounding box of the cell's own shapes, ignoring
+  its placements; `nothing` if the cell has no shapes or if the extent wasn't computed.
+"""
+struct CellIndex
+    placements::Vector{CellPlacement}
+    layers::Dict{Tuple{UInt64, UInt64}, ElementCounts}
+    hasExtent::Bool
+    extent::Union{Nothing, Rect{2, Int64}}
+end
+
+"""
+    abstract type CellEdit
+
+A change to a cell that hasn't been loaded, recorded to be applied whenever the cell's contents
+get decoded.
+"""
+abstract type CellEdit end
+
+"""
     struct Cell
+
+A cell of an OASIS file, holding shapes and placements of other cells.
+
+A cell is either *loaded*, in which case its shapes and placements live in memory, or not, in
+which case they are decoded from the file whenever they're needed. What is known about a cell
+that isn't loaded comes in tiers; see [`tier`](@ref).
 
 # Properties
 
 - `name::Symbol`: Name of the cell.
-- `shapes::ShapeStore`: The shapes, such as polygons and lines, contained in the cell.
-- `placements::Vector{CellPlacement}`: Lists all other cells that are placed in this cell.
+- `shapes::Union{Nothing, ShapeStore}`: The shapes of a loaded cell; `nothing` otherwise. Use
+  [`shapes`](@ref) to get the shapes of any cell.
+- `placements::Union{Nothing, Vector{CellPlacement}}`: The placements of a loaded cell;
+  `nothing` otherwise. Use [`placements`](@ref) to get the placements of any cell.
+- `source::Union{Nothing, CellSource}`: Where the cell's contents can be decoded from, or
+  `nothing` for a cell that was created in memory.
+- `index::Union{Nothing, CellIndex}`: Summary of the contents of a cell that isn't loaded, if
+  it was computed.
+- `edits::Vector{CellEdit}`: Changes to a cell that isn't loaded, still to be applied.
 - `_root::Bool`: Indicates whether the cell is a root cell (i.e., isn't contained in any other
   cell).
 
-See also [`LazyCell`](@ref).
+See also [`load_cell!`](@ref), [`index_cell!`](@ref).
 """
-mutable struct Cell <: AbstractCell
+mutable struct Cell
     const name::Symbol
-    const shapes::ShapeStore
-    const placements::Vector{CellPlacement}
+    shapes::Union{Nothing, ShapeStore}
+    placements::Union{Nothing, Vector{CellPlacement}}
+    source::Union{Nothing, CellSource}
+    index::Union{Nothing, CellIndex}
+    const edits::Vector{CellEdit}
     _root::Bool
 end
 
 Cell(name::AbstractString, args...) = Cell(Symbol(name), args...)
+
+Cell(
+    name::Symbol,
+    shapes::ShapeStore,
+    placements::AbstractVector{CellPlacement},
+    root::Bool
+) = Cell(name, shapes, convert(Vector{CellPlacement}, placements), nothing, nothing, CellEdit[], root)
 
 Cell(
     name::Symbol,
@@ -373,61 +448,8 @@ Cell(
     root::Bool
 ) = Cell(name, ShapeStore(shapes), placements, root)
 
-"""
-    shapes(cell)
-    shapes(cell, layer)
-    shapes(cell, layer_number)
-    shapes(cell, layer_number, datatype_number)
-
-List the shapes contained in `cell`, optionally filtered by layer or layer number.
-
-# Examples
-
-```jldoctest
-julia> using OasisTools;
-
-julia> filename = joinpath(OasisTools.TESTDATA_DIRECTORY, "boxes.oas");
-
-julia> oas = oasisread(filename);
-
-julia> cell = oas[:BOTTOM];
-
-julia> shapes(cell)
-1-element ShapeStore:
- Rectangle in layer (1/0) at (-185, 2875)
-
-julia> shapes(cell, 1, 0)
-1-element Vector{Shape}:
- Rectangle in layer (1/0) at (-185, 2875)
-
-julia> wrong_layer = layer(oas, :V1);
-
-julia> shapes(cell, wrong_layer)
-Shape[]
-```
-"""
-shapes(cell::Cell) = cell.shapes
-shapes(cell::Cell, l::Layer) = shapes(cell, l.layerNumber, l.datatypeNumber)
-shapes(cell::Cell, l::Integer) = shapes(cell, Interval(l, l))
-shapes(cell::Cell, l::Integer, d::Integer) = shapes(cell, Interval(l, l), Interval(d, d))
-shapes(cell::Cell, l::Interval) = shapes(cell, l, Interval(0, typemax(UInt64)))
-
-function shapes(cell::Cell, l::Interval, d::Interval)
-    matches = Shape[]
-    for v in shape_vectors(cell.shapes)
-        for s in v
-            (s.layerNumber in l && s.datatypeNumber in d) && push!(matches, s)
-        end
-    end
-    return matches
-end
-
-"""
-    placements(cell)
-
-List the placements contained in `cell`. Not yet supported for `LazyCell`s.
-"""
-placements(cell::Cell) = cell.placements
+Cell(name::Symbol, source::CellSource, root::Bool) =
+    Cell(name, nothing, nothing, source, nothing, CellEdit[], root)
 
 """
     name(cell)
@@ -436,35 +458,7 @@ Name of a cell.
 """
 name(cell::Cell) = cell.name
 
-"""
-    struct LazyCell
-
-Lazy-loaded version of a `Cell`.
-
-# Properties
-
-- `name::Symbol`: Name of the cell.
-- `bytes::Vector{UInt8}`: Bytes of the corresponding CELL record.
-- `cellnameReferences::Dict{UInt64, Symbol}`: To ensure all bytes of the corresponding CELL
-  record are interpretable, a `LazyCell` stores a list of internal cell name references.
-- `textstringReferences::Dict{UInt64, Symbol}`: Internal text string references, stored for the
-  same reason as `cellnameReferences`.
-- `_root::Bool`: Indicates whether the cell is a root cell (i.e., isn't contained in any other
-  cell).
-
-See also [`Cell`](@ref), [`load_cell!`](@ref).
-"""
-mutable struct LazyCell <: AbstractCell
-    const name::Symbol
-    const bytes::SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{Int64}}, true}
-    const cellnameReferences::Dict{UInt64, Symbol}
-    const textstringReferences::Dict{UInt64, Symbol}
-    _root::Bool
-end
-
-name(cell::LazyCell) = cell.name
-
-struct PreprocessedCell <: AbstractCell
+struct PreprocessedCell
     nameOrNumber::Union{Symbol, UInt64}
     bytes::SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{Int64}}, true}
 end
@@ -476,13 +470,12 @@ Object containing all the data of your OASIS file.
 
 # Properties
 
-- `cells::Vector{Union{LazyCell, Cell}}`: Cells in your OASIS file. The cells can either be
-  `Cell` objects or lazy-loaded `LazyCell` objects.
+- `cells::Vector{Cell}`: Cells in your OASIS file, loaded or not.
 - `layers::Vector{Layer}`: Lists all named layers in your OASIS file.
 - `unit::Float64`: Unit length, in grid steps per micron.
 """
 mutable struct Oasis
-    const cells::Vector{Union{LazyCell, Cell}}
+    const cells::Vector{Cell}
     const layers::Vector{Layer} # FIXME: Unnamed layers aren't added right now.
     unit::Float64
     # Cell name to position in `cells`. Rebuilt on demand if `cells` is mutated directly.
@@ -491,12 +484,12 @@ mutable struct Oasis
 end
 
 function Oasis(
-    cells::AbstractVector = Union{LazyCell, Cell}[],
+    cells::AbstractVector = Cell[],
     layers::AbstractVector{Layer} = Layer[];
     unit::Real = DEFAULT_UNIT
 )
     oas = Oasis(
-        convert(Vector{Union{LazyCell, Cell}}, cells),
+        convert(Vector{Cell}, cells),
         convert(Vector{Layer}, layers),
         Float64(unit),
         Dict{Symbol, Int64}(),
@@ -507,7 +500,7 @@ function Oasis(
 end
 
 # Appends without checking for duplicates; callers are responsible for that.
-function push_cell!(oas::Oasis, new_cell::Union{LazyCell, Cell})
+function push_cell!(oas::Oasis, new_cell::Cell)
     push!(oas.cells, new_cell)
     oas._index[new_cell.name] = length(oas.cells)
     oas._indexedLength = length(oas.cells)
@@ -536,9 +529,9 @@ function get_cell(oas::Oasis, name::Symbol)
     return oas.cells[index]
 end
 
-get_cell(cells::AbstractVector{Union{LazyCell, Cell}}, name::AbstractString) =
+get_cell(cells::AbstractVector{Cell}, name::AbstractString) =
     get_cell(cells, Symbol(name))
-function get_cell(cells::AbstractVector{Union{LazyCell, Cell}}, name::Symbol)
+function get_cell(cells::AbstractVector{Cell}, name::Symbol)
     index = find_cell(cells, name)
     isnothing(index) && return nothing
     return cells[index]
@@ -556,9 +549,9 @@ function find_cell(oas::Oasis, name::Symbol)
     return get(oas._index, name, nothing)
 end
 
-find_cell(cells::AbstractVector{Union{LazyCell, Cell}}, name::AbstractString) =
+find_cell(cells::AbstractVector{Cell}, name::AbstractString) =
     find_cell(cells, Symbol(name))
-find_cell(cells::AbstractVector{Union{LazyCell, Cell}}, name::Symbol) =
+find_cell(cells::AbstractVector{Cell}, name::Symbol) =
     findfirst(cell -> cell.name == name, cells)
 
 """
@@ -583,7 +576,7 @@ julia> filename = joinpath(OasisTools.TESTDATA_DIRECTORY, "polygon.oas");
 julia> oas = oasisread(filename);
 
 julia> cells(oas)
-1-element Vector{Union{Cell, LazyCell}}:
+1-element Vector{Cell}:
  Cell TOP with 0 placements and 1 shape
 ```
 """

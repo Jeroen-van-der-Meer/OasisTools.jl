@@ -1,4 +1,4 @@
-@testset "Write LazyCells" begin
+@testset "Write cells that aren't loaded" begin
     @testset "Polygon" begin
         filename = "polygon.oas"
         filepath = joinpath(@__DIR__, "testdata", filename)
@@ -68,11 +68,10 @@
             0x00, 0x00,             # x = 0, y = 0
             0x00                    # PAD
         ]
-        cell = OasisTools.LazyCell(
-            :TOP, view(bytes, 1:length(bytes)),
-            Dict{UInt64, Symbol}(), Dict{UInt64, Symbol}(),
-            true
+        source = OasisTools.CellSource(
+            view(bytes, 1:length(bytes)), Dict{UInt64, Symbol}(), Dict{UInt64, Symbol}()
         )
+        cell = Cell(:TOP, source, true)
 
         state = OasisTools.WriterState(tempname(), 1024)
         state.cellnameReferences[:TOP] = 123
@@ -552,7 +551,7 @@ end
         path = tempname()
         oasiswrite(path, oas)
         oas2 = oasisread(path; lazy = true)
-        bytes = oas2[:A].bytes
+        bytes = oas2[:A].source.bytes
         @test bytes[1] == 20 # RECTANGLE
         @test bytes[2] == 0b11000011 # S, W, D and L set; X and Y omitted
         @test bytes[3:5] == [0x00, 0x00, 0x0a] # layer, datatype, width

@@ -262,11 +262,11 @@ end
         oas = oasisread(filepath; lazy = true)
         @test oas isa Oasis
         cell = oas["TOP"]
-        @test cell isa LazyCell
-        @test cell.bytes[1] == 21 # Byte corresponding to start of POLYGON record
+        @test !isloaded(cell)
+        @test cell.source.bytes[1] == 21 # Byte corresponding to start of POLYGON record
         load_cell!(oas, "TOP")
         cell = oas["TOP"]
-        @test cell isa Cell
+        @test isloaded(cell)
     end
     @testset "Boxes" begin
         filename = "boxes.oas"
@@ -279,9 +279,9 @@ OASIS file with the following cell hierarchy:
 TOP
 └─ ?"""
         top_cell = oas["TOP"]
-        @test top_cell.bytes[1] == 17 # First byte of a PLACEMENT record
+        @test top_cell.source.bytes[1] == 17 # First byte of a PLACEMENT record
         bottom_cell = oas["BOTTOM"]
-        @test bottom_cell.bytes[1] == 20 # RECTANGLE
+        @test bottom_cell.source.bytes[1] == 20 # RECTANGLE
     end
     @testset "Circle" begin
         filename = "circle.oas"
@@ -301,7 +301,7 @@ TOP
         oas = oasisread(filepath; lazy = true)
         @test oas isa Oasis
         load_cell!(oas, "BOTTOM")
-        @test oas["BOTTOM"] isa Cell
+        @test isloaded(oas["BOTTOM"])
         @test length(oas["BOTTOM"].shapes) == 1
     end
     @testset "Trapezoids" begin
@@ -322,8 +322,8 @@ OTHERTOP
 └─ ?
 TOP
 └─ ?"""
-        @test oas["TOP"] isa LazyCell
-        @test oas["OTHERTOP"] isa LazyCell
+        @test !isloaded(oas["TOP"])
+        @test !isloaded(oas["OTHERTOP"])
     end
     @testset "Flipped" begin
         filename = "flipped.oas"
@@ -348,11 +348,11 @@ end
             0x15, 0x18,             # POLYGON; only x and y explicit, so point list is modal
             0xd0, 0x0f, 0x00        # x = 1000, y = 0
         ])
-        @test length(state.shapes) == 2
-        @test state.shapes[1].shape.exterior == Point{2, Int64}[
+        @test length(state.sink.shapes) == 2
+        @test state.sink.shapes[1].shape.exterior == Point{2, Int64}[
             (0, 0), (100, 0), (100, 100), (0, 100)
         ]
-        @test state.shapes[2].shape.exterior == Point{2, Int64}[
+        @test state.sink.shapes[2].shape.exterior == Point{2, Int64}[
             (1000, 0), (1100, 0), (1100, 100), (1000, 100)
         ]
     end
@@ -369,13 +369,13 @@ end
             0x16, 0x18,             # PATH; only x and y explicit, so point list is modal
             0xd0, 0x0f, 0x00        # x = 1000, y = 0
         ])
-        @test length(state.shapes) == 2
-        @test state.shapes[1].shape.points == Point{2, Int64}[(0, 0), (100, 0), (100, 100)]
-        @test state.shapes[2].shape.points == Point{2, Int64}[
+        @test length(state.sink.shapes) == 2
+        @test state.sink.shapes[1].shape.points == Point{2, Int64}[(0, 0), (100, 0), (100, 100)]
+        @test state.sink.shapes[2].shape.points == Point{2, Int64}[
             (1000, 0), (1100, 0), (1100, 100)
         ]
-        @test state.shapes[1].shape.width == 10
-        @test state.shapes[2].shape.width == 10
+        @test state.sink.shapes[1].shape.width == 10
+        @test state.sink.shapes[2].shape.width == 10
     end
 end
 

@@ -1,4 +1,4 @@
-function add_cell!(oas::Oasis, new_cell::Union{LazyCell, Cell})
+function add_cell!(oas::Oasis, new_cell::Cell)
     isnothing(find_cell(oas, new_cell.name)) ||
         error("Cell with name $(new_cell.name) already exists")
     return push_cell!(oas, new_cell)
@@ -9,10 +9,10 @@ add_cell!(oas::Oasis, cell_name::AbstractString) = add_cell!(oas, Symbol(cell_na
 add_cell!(oas::Oasis, cell_name::Symbol) =
     add_cell!(oas, Cell(cell_name, ShapeStore(), CellPlacement[], true))
 
-add_cell!(cells::AbstractVector{Union{LazyCell, Cell}}, cell_name::AbstractString) =
+add_cell!(cells::AbstractVector{Cell}, cell_name::AbstractString) =
     add_cell!(cells, Symbol(cell_name))
 
-function add_cell!(cells::AbstractVector{Union{LazyCell, Cell}}, cell_name::Symbol)
+function add_cell!(cells::AbstractVector{Cell}, cell_name::Symbol)
     add_cell!(cells, Cell(cell_name, ShapeStore(), CellPlacement[], true))
     return cells
 end
@@ -25,7 +25,7 @@ Add a cell to an OASIS object.
 # Arguments
 
 - `oas::Oasis`: Your input OASIS object.
-- `cell`: Can be a `Cell`, `LazyCell`, or simply the name of the new cell you wish to add.
+- `cell`: Can be a `Cell`, or simply the name of the new cell you wish to add.
 
 # Example
 
@@ -47,8 +47,8 @@ NEW
 ```
 """
 function add_cell!(
-    cells::AbstractVector{Union{LazyCell, Cell}},
-    new_cell::Union{LazyCell, Cell};
+    cells::AbstractVector{Cell},
+    new_cell::Cell;
     kwargs...
 )    if isnothing(find_cell(cells, new_cell.name))
         push!(cells, new_cell)
@@ -76,8 +76,11 @@ Or:
 - `layer::Integer`: The layer number.
 - `datatype::Integer`: The datatype number.
 - `repetition`: Optional repetition specification.
+
+The cell doesn't need to be loaded.
 """
-add_shape!(cell::Cell, shape::Shape) = (push!(cell.shapes, shape); cell)
+add_shape!(cell::Cell, shape::Shape) =
+    isloaded(cell) ? (push!(cell.shapes, shape); cell) : append_element!(cell, shape)
 
 function add_shape!(
     cell::Cell, geom, layer::Integer, datatype::Integer;
@@ -104,8 +107,11 @@ Or:
 - `cell_name::Symbol`: Name of the cell to place.
 - `location::Point{2, Int64}`: Placement location.
 - `rotation`, `magnification`, `flipped`, `repetition`: Optional placement parameters.
+
+The cell doesn't need to be loaded.
 """
-add_placement!(cell::Cell, p::CellPlacement) = (push!(cell.placements, p); cell)
+add_placement!(cell::Cell, p::CellPlacement) =
+    isloaded(cell) ? (push!(cell.placements, p); cell) : append_element!(cell, p)
 
 function add_placement!(
     cell::Cell, cell_name::Symbol, location::Point{2, Int64};
@@ -124,8 +130,9 @@ end
 
 Remove a cell from an OASIS object. Throws an error if no cell with the given name exists.
 
-If `cascade = true`, also removes all placements of the deleted cell from other cells. Beware
-that lazy-loaded cells are skipped.
+If `cascade = true`, also removes all placements of the deleted cell from other cells. For cells
+that aren't loaded, this is recorded and carried out whenever they are decoded, except where
+their [`tier`](@ref) shows they don't place the deleted cell.
 
 Otherwise, use [`validate_placements`](@ref) to check for dangling references.
 """
@@ -136,21 +143,23 @@ function remove_cell!(oas::Oasis, cell_name::Symbol; cascade::Bool = false)
     reindex_cells!(oas)
     if cascade
         for cell in cells(oas)
-            cell isa LazyCell && continue
-            filter!(p -> p.cellName != cell_name, cell.placements)
+            known = known_placements(cell)
+            # Leave alone cells known not to place the deleted cell.
+            !isnothing(known) && all(p -> p.cellName != cell_name, known) && continue
+            edit_cell!(cell, RemovePlacements(cell_name))
         end
     end
     return oas
 end
 
 merge_cells(
-    cells::AbstractVector{Union{LazyCell, Cell}},
-    others::AbstractVector{Union{LazyCell, Cell}}...
+    cells::AbstractVector{Cell},
+    others::AbstractVector{Cell}...
 ) = merge_cells!(copy(cells), others...)
 
 function merge_cells!(
-    cells::AbstractVector{Union{LazyCell, Cell}},
-    others::AbstractVector{Union{LazyCell, Cell}}...
+    cells::AbstractVector{Cell},
+    others::AbstractVector{Cell}...
 )
     for other in others
         merge_cells!(cells, other)
@@ -159,8 +168,8 @@ function merge_cells!(
 end
 
 function merge_cells!(
-    cells::AbstractVector{Union{LazyCell, Cell}},
-    other::AbstractVector{Union{LazyCell, Cell}}
+    cells::AbstractVector{Cell},
+    other::AbstractVector{Cell}
 )
     for new_cell in other
         merge_cells!(cells, new_cell)
@@ -169,8 +178,8 @@ function merge_cells!(
 end
 
 function merge_cells!(
-    cells::AbstractVector{Union{LazyCell, Cell}},
-    new_cell::Union{LazyCell, Cell}
+    cells::AbstractVector{Cell},
+    new_cell::Cell
 )
     if isnothing(find_cell(cells, new_cell.name))
         push!(cells, new_cell)
@@ -254,7 +263,8 @@ end
 Remove a layer from an OASIS object.
 
 If `cascade = true`, also removes all shapes whose layer/datatype numbers fall within the
-removed layer's intervals. Beware that lazy-loaded cells are skipped.
+removed layer's intervals. For cells that aren't loaded, this is recorded and carried out
+whenever they are decoded, except where their [`tier`](@ref) shows they have no such shapes.
 """
 function remove_layer!(oas::Oasis, name::Symbol; cascade::Bool=false)
     index = find_layer(oas, name)
@@ -276,8 +286,12 @@ end
 
 function _cascade_remove_layer!(oas::Oasis, l::Layer)
     for cell in cells(oas)
-        cell isa LazyCell && continue
-        filter!(s -> !(s.layerNumber in l.layerNumber && s.datatypeNumber in l.datatypeNumber), cell.shapes)
+        # Leave alone cells known not to have shapes on the removed layer.
+        if !isloaded(cell) && !isnothing(cell.index)
+            any(((ln, dn),) -> ln in l.layerNumber && dn in l.datatypeNumber, keys(cell.index.layers)) ||
+                continue
+        end
+        edit_cell!(cell, RemoveShapes(l.layerNumber, l.datatypeNumber))
     end
 end
 

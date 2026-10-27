@@ -1,7 +1,7 @@
 function write_cellname_reference(
     state::WriterState,
-    cell::LazyCell,
-    cell_parser_state::LazyCellParserState,
+    source::CellSource,
+    cell_parser_state::SkipParserState,
     info_byte::UInt8
 )
     cellname_explicit = bit_is_one(info_byte, 1)
@@ -9,7 +9,7 @@ function write_cellname_reference(
         cellname_as_ref = bit_is_one(info_byte, 2)
         if cellname_as_ref
             cellname_number = rui(cell_parser_state)
-            cellname = cell.cellnameReferences[cellname_number]
+            cellname = source.cellnameReferences[cellname_number]
         else
             cellname = read_symbol(cell_parser_state)
             # Change the bit indicating that the reference was a string, because we choose to
@@ -21,7 +21,7 @@ function write_cellname_reference(
         wui(state, new_cellname_number)
     else
         # If cellname is implicit, then a modal variable is used to refer to the right cellname.
-        # Since our LazyCell writer writes sequentially, we can be sure that the value of this
+        # Since copying happens sequentially, we can be sure that the value of this
         # modal variable will be correct by the time it reaches this record, and hence we can
         # simply copy the info byte.
         write_byte(state, info_byte)
@@ -30,8 +30,8 @@ end
 
 function write_text(
     state::WriterState,
-    cell::LazyCell,
-    cell_parser_state::LazyCellParserState,
+    source::CellSource,
+    cell_parser_state::SkipParserState,
     info_byte::UInt8
 )
     # We explicitly store text strings rather than using references.
@@ -40,7 +40,7 @@ function write_text(
         textstring_as_ref = bit_is_one(info_byte, 3)
         if textstring_as_ref
             textstring_number = rui(cell_parser_state)
-            textstring = cell.textstringReferences[textstring_number]
+            textstring = source.textstringReferences[textstring_number]
             # Change the bit indicating that the reference was a string, because we choose to
             # store a number instead.
             info_byte = set_bit_to_zero(info_byte, 3)
@@ -51,7 +51,7 @@ function write_text(
         write_a_string(state, textstring)
     else
         # If textstring is implicit, then a modal variable is used to refer to the right
-        # textstring. Since our LazyCell writer writes sequentially, we can be sure that the
+        # textstring. Since copying happens sequentially, we can be sure that the
         # value of this modal variable will be correct by the time it reaches this record, and
         # hence we can simply copy the info byte.
         write_byte(state, info_byte)

@@ -14,11 +14,17 @@ export cell_names
 export CellHierarchy
 export CellPlacement
 export cells
+export crop
 export expand
+export extent
+export foreach_shape
+export index_all_cells!
+export index_cell!
+export isloaded
 export Layer
 export layer
+export layer_counts
 export layers
-export LazyCell
 export load_all_cells!
 export load_cell
 export load_cell!
@@ -41,6 +47,7 @@ export shapes
 export ShapeStore
 export show_cells
 export show_shapes
+export tier
 export unit
 export update_roots!
 export validate_placements
@@ -51,8 +58,17 @@ include("modal_variables.jl")
 include("structs_oasis.jl")
 include("structs_io.jl")
 
+# Geometry
+include("geometry.jl")
+
+# Decoding cells, with or without edits
+include("edits.jl")
+include("sinks.jl")
+include("cells.jl")
+
 # Editing
 include("mutate.jl")
+include("crop.jl")
 
 # Cell hierarchy
 include("hierarchy.jl")
@@ -65,9 +81,6 @@ include("read_data.jl")
 include("read_records.jl")
 include("read_utils.jl")
 include("read_oasis.jl")
-
-# Lazy loading
-include("lazy.jl")
 
 # Skipping
 include("skip_data.jl")

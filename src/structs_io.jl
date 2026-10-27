@@ -7,7 +7,7 @@ Thrown when the contents of an OASIS file cannot be interpreted.
 
 - `message::String`: Description of what went wrong.
 - `position::Int64`: Byte offset at which parsing stopped. This is an offset into the file
-  itself, unless the error occurred while parsing a [`LazyCell`](@ref) or the contents of a
+  itself, unless the error occurred while decoding a cell or the contents of a
   CBLOCK, in which case it is relative to the start of that buffer.
 """
 struct OasisParseError <: Exception
@@ -47,41 +47,43 @@ function FileParserState(buf::AbstractVector{UInt8})
     )
 end
 
-mutable struct CellParserState{B <: AbstractVector{UInt8}} <: AbstractParserState
+# Decodes the records of a cell, handing every shape and placement to `sink`, which decides what
+# to do with them. See `sinks.jl`.
+mutable struct CellParserState{B <: AbstractVector{UInt8}, S} <: AbstractParserState
     const buf::B
     pos::Int64
     const cellnameReferences::Dict{UInt64, Symbol}
     const textstringReferences::Dict{UInt64, Symbol}
-    const shapes::ShapeStore
-    const placements::Vector{CellPlacement}
+    const sink::S
     const mod::ModalVariables
 end
 
-function CellParserState(cell::LazyCell)
-    return CellParserState{typeof(cell.bytes)}(
-        cell.bytes, 1,
-        cell.cellnameReferences, cell.textstringReferences,
-        ShapeStore(), CellPlacement[],
+function CellParserState(source::CellSource, sink)
+    return CellParserState{typeof(source.bytes), typeof(sink)}(
+        source.bytes, 1,
+        source.cellnameReferences, source.textstringReferences,
+        sink,
         ModalVariables()
     )
 end
 
-function CellParserState(buf::AbstractVector{UInt8})
-    return CellParserState{typeof(buf)}(
+function CellParserState(buf::AbstractVector{UInt8}, sink = ContentsSink())
+    return CellParserState{typeof(buf), typeof(sink)}(
         buf, 1,
         Dict(), Dict(),
-        ShapeStore(), CellPlacement[],
+        sink,
         ModalVariables()
     )
 end
 
-mutable struct LazyCellParserState{B <: AbstractVector{UInt8}} <: AbstractParserState
+# Walks over the records of a cell without interpreting them, to find where records end.
+mutable struct SkipParserState{B <: AbstractVector{UInt8}} <: AbstractParserState
     const buf::B
     pos::Int64
 end
 
-function LazyCellParserState(state::FileParserState)
-    return LazyCellParserState{typeof(state.buf)}(state.buf, state.pos)
+function SkipParserState(state::FileParserState)
+    return SkipParserState{typeof(state.buf)}(state.buf, state.pos)
 end
 
 new_state(state::FileParserState, new_buf::AbstractVector{UInt8}) =
@@ -95,23 +97,23 @@ new_state(state::FileParserState, new_buf::AbstractVector{UInt8}) =
         state.mod
     )
 
-new_state(state::CellParserState, new_buf::AbstractVector{UInt8}) =
-    CellParserState{typeof(new_buf)}(
+new_state(state::CellParserState{<:Any, S}, new_buf::AbstractVector{UInt8}) where S =
+    CellParserState{typeof(new_buf), S}(
         new_buf, 1,
         state.cellnameReferences, state.textstringReferences,
-        state.shapes, state.placements, 
+        state.sink,
         state.mod
     )
 
-new_state(::LazyCellParserState, new_buf::AbstractVector{UInt8}) =
-    LazyCellParserState{typeof(new_buf)}(new_buf, 1)
+new_state(::SkipParserState, new_buf::AbstractVector{UInt8}) =
+    SkipParserState{typeof(new_buf)}(new_buf, 1)
 
 mutable struct WriterState
     const io::IO # File we're saving to.
     const buf::Vector{UInt8} # An output buffer of some size, probably big.
     const bufsize::Int64 # Length of buffer stored separately.
     pos::Int64 # Position in buffer.
-    const cells::Vector{Union{LazyCell, Cell}}
+    const cells::Vector{Cell}
     const layers::Vector{Layer}
     const cellnameReferences::Dict{Symbol, UInt64}
     const mod::WriterModalVariables

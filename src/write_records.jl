@@ -43,51 +43,44 @@ function write_cell(state::WriterState, cell::Cell)
     write_byte(state, 13) # CELL
     wui(state, state.cellnameReferences[cell.name])
     reset_modal_variables!(state.mod)
-    for placement in placements(cell)
-        if !isone(placement.magnification) || !iszero(mod(placement.rotation, 90))
-            write_placement_mag_angle(state, placement)
-        else
-            write_placement(state, placement)
-        end
-    end
-    # Writing a kind at a time keeps the modal variables stable across each group.
-    for group in shape_vectors(shapes(cell))
-        write_shape_group(state, group)
+    if isloaded(cell) || !isempty(cell.edits)
+        # Hand every element to the encoder, decoding them first if the cell isn't loaded. As
+        # `decode_cell` passes the shapes of a loaded cell on a kind at a time, the modal
+        # variables stay stable across each group.
+        decode_cell(state, cell)
+    else
+        copywrite_source(state, cell.source)
     end
 end
 
-function write_shape_group(state::WriterState, group::AbstractVector{<:Shape})
-    for shape in group
-        write_shape(state, shape)
+function write_placement_record(state::WriterState, placement::CellPlacement)
+    if !isone(placement.magnification) || !iszero(mod(placement.rotation, 90))
+        write_placement_mag_angle(state, placement)
+    else
+        write_placement(state, placement)
     end
 end
 
-function write_cell(state::WriterState, cell::LazyCell)
-    write_byte(state, 13) # CELL
-    # Write a new reference number
-    wui(state, state.cellnameReferences[cell.name])
-    # Keep the writer's view of the modal variables in step with what a reader sees.
-    reset_modal_variables!(state.mod)
-
-    # When writing a LazyCell, we mostly just have to copy-paste bytes onto our target buffer.
-    # To figure out how many bytes to copy, we invoke the same parser that we also use for
-    # lazily parsing a cell.
-    cell_parser_state = LazyCellParserState(cell.bytes, 1)
-    nbytes = length(cell.bytes)
+# The contents of a cell that hasn't been loaded or changed can mostly be copied byte for byte.
+# Only the references to cell names and text strings need translating, as the numbering is
+# specific to each file.
+function copywrite_source(state::WriterState, source::CellSource)
+    cell_parser_state = SkipParserState(source.bytes, 1)
+    nbytes = length(source.bytes)
     while cell_parser_state.pos <= nbytes
         record_type = read_byte(cell_parser_state)
-        copywrite_record(record_type, state, cell, cell_parser_state)
+        copywrite_record(record_type, state, source, cell_parser_state)
     end
 end
 
 function copywrite_placement(
     state::WriterState,
-    cell::LazyCell,
-    cell_parser_state::LazyCellParserState
+    source::CellSource,
+    cell_parser_state::SkipParserState
 )
     write_byte(state, 17) # PLACEMENT
     info_byte = read_byte(cell_parser_state)
-    write_cellname_reference(state, cell, cell_parser_state, info_byte)
+    write_cellname_reference(state, source, cell_parser_state, info_byte)
 
     # After writing the new reference, we copy the remaining records.
     remaining_record_start = cell_parser_state.pos
@@ -203,12 +196,12 @@ end
 
 function copywrite_placement_mag_angle(
     state::WriterState,
-    cell::LazyCell,
-    cell_parser_state::LazyCellParserState
+    source::CellSource,
+    cell_parser_state::SkipParserState
 )
     write_byte(state, 18) # PLACEMENT
     info_byte = read_byte(cell_parser_state)
-    write_cellname_reference(state, cell, cell_parser_state, info_byte)
+    write_cellname_reference(state, source, cell_parser_state, info_byte)
 
     # After writing the new reference, we copy the remaining records.
     remaining_record_start = cell_parser_state.pos
@@ -224,12 +217,12 @@ end
 
 function copywrite_text(
     state::WriterState,
-    cell::LazyCell,
-    cell_parser_state::LazyCellParserState
+    source::CellSource,
+    cell_parser_state::SkipParserState
 )
     write_byte(state, 19) # TEXT
     info_byte = read_byte(cell_parser_state)
-    write_text(state, cell, cell_parser_state, info_byte)
+    write_text(state, source, cell_parser_state, info_byte)
 
     # After writing the new reference, we copy the remaining records.
     remaining_record_start = cell_parser_state.pos
@@ -559,8 +552,8 @@ end
 
 function copywrite_cblock(
     state::WriterState,
-    cell::LazyCell,
-    cell_parser_state::LazyCellParserState
+    source::CellSource,
+    cell_parser_state::SkipParserState
 )
     # To handle a CBLOCK, we temporarily replace the buffer of the lazy cell parser, and continue
     # our copywriting adventure.
@@ -577,25 +570,25 @@ function copywrite_cblock(
     cell_parser_decomp = new_state(cell_parser_state, buf_decompress)
     while cell_parser_decomp.pos <= uncomp_byte_count
         record_type = read_byte(cell_parser_decomp)
-        copywrite_record(record_type, state, cell, cell_parser_decomp)
+        copywrite_record(record_type, state, source, cell_parser_decomp)
     end
 end
 
 function copywrite_record(
     record_type::UInt8,
     state::WriterState,
-    cell::LazyCell,
-    cell_parser_state::LazyCellParserState
+    source::CellSource,
+    cell_parser_state::SkipParserState
 )
     # PLACEMENT and TEXT records need special attention as they contain internal references (to
     # cell name and text strings, respectively), which are unique to the file they are
     # contained in.
-    record_type == 17 && return copywrite_placement(state, cell, cell_parser_state)
-    record_type == 18 && return copywrite_placement_mag_angle(state, cell, cell_parser_state)
-    record_type == 19 && return copywrite_text(state, cell, cell_parser_state)
+    record_type == 17 && return copywrite_placement(state, source, cell_parser_state)
+    record_type == 18 && return copywrite_placement_mag_angle(state, source, cell_parser_state)
+    record_type == 19 && return copywrite_text(state, source, cell_parser_state)
 
     # CBLOCK records also need special attention because they need to be uncompressed.
-    record_type == 34 && return copywrite_cblock(state, cell, cell_parser_state)
+    record_type == 34 && return copywrite_cblock(state, source, cell_parser_state)
 
     # All remaining records can be copy-pasted.
     record_start = cell_parser_state.pos - 1

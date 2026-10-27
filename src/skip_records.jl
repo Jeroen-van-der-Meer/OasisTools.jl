@@ -30,7 +30,7 @@ function skip_propstring_ref(state::FileParserState)
     skip_integer(state)
 end
 
-function skip_placement(state::LazyCellParserState)
+function skip_placement(state::SkipParserState)
     info_byte = read_byte(state)
     if bit_is_one(info_byte, 1)
         if bit_is_one(info_byte, 2)
@@ -44,7 +44,7 @@ function skip_placement(state::LazyCellParserState)
     bit_is_one(info_byte, 5) && skip_repetition(state)
 end
 
-function skip_placement_mag_angle(state::LazyCellParserState)
+function skip_placement_mag_angle(state::SkipParserState)
     info_byte = read_byte(state)
     if bit_is_one(info_byte, 1)
         if bit_is_one(info_byte, 2)
@@ -60,7 +60,7 @@ function skip_placement_mag_angle(state::LazyCellParserState)
     bit_is_one(info_byte, 5) && skip_repetition(state)
 end
 
-function skip_text(state::LazyCellParserState)
+function skip_text(state::SkipParserState)
     info_byte = read_byte(state)
     if bit_is_one(info_byte, 2)
         if bit_is_one(info_byte, 3)
@@ -76,7 +76,7 @@ function skip_text(state::LazyCellParserState)
     bit_is_one(info_byte, 6) && skip_repetition(state)
 end
 
-function skip_rectangle(state::LazyCellParserState)
+function skip_rectangle(state::SkipParserState)
     info_byte = read_byte(state)
     bit_is_one(info_byte, 8) && skip_integer(state)
     bit_is_one(info_byte, 7) && skip_integer(state)
@@ -87,7 +87,7 @@ function skip_rectangle(state::LazyCellParserState)
     bit_is_one(info_byte, 6) && skip_repetition(state)
 end
 
-function skip_polygon(state::LazyCellParserState)
+function skip_polygon(state::SkipParserState)
     info_byte = read_byte(state)
     bit_is_one(info_byte, 8) && skip_integer(state)
     bit_is_one(info_byte, 7) && skip_integer(state)
@@ -97,7 +97,7 @@ function skip_polygon(state::LazyCellParserState)
     bit_is_one(info_byte, 6) && skip_repetition(state)
 end
 
-function skip_path(state::LazyCellParserState)
+function skip_path(state::SkipParserState)
     info_byte = read_byte(state)
     bit_is_one(info_byte, 8) && skip_integer(state)
     bit_is_one(info_byte, 7) && skip_integer(state)
@@ -117,7 +117,7 @@ function skip_path(state::LazyCellParserState)
     bit_is_one(info_byte, 6) && skip_repetition(state)
 end
 
-function skip_trapezoid(state::LazyCellParserState, delta_a_explicit::Bool, delta_b_explicit::Bool)
+function skip_trapezoid(state::SkipParserState, delta_a_explicit::Bool, delta_b_explicit::Bool)
     info_byte = read_byte(state)
     bit_is_one(info_byte, 8) && skip_integer(state)
     bit_is_one(info_byte, 7) && skip_integer(state)
@@ -130,7 +130,7 @@ function skip_trapezoid(state::LazyCellParserState, delta_a_explicit::Bool, delt
     bit_is_one(info_byte, 6) && skip_repetition(state)
 end
 
-function skip_ctrapezoid(state::LazyCellParserState)
+function skip_ctrapezoid(state::SkipParserState)
     info_byte = read_byte(state)
     bit_is_one(info_byte, 8) && skip_integer(state)
     bit_is_one(info_byte, 7) && skip_integer(state)
@@ -142,7 +142,7 @@ function skip_ctrapezoid(state::LazyCellParserState)
     bit_is_one(info_byte, 6) && skip_repetition(state)
 end
 
-function skip_circle(state::LazyCellParserState)
+function skip_circle(state::SkipParserState)
     info_byte = read_byte(state)
     bit_is_one(info_byte, 8) && skip_integer(state)
     bit_is_one(info_byte, 7) && skip_integer(state)
@@ -172,7 +172,7 @@ function skip_property(state::AbstractParserState)
     end
 end
 
-function skip_cblock(state::LazyCellParserState)
+function skip_cblock(state::SkipParserState)
     skip_integer(state)
     skip_integer(state)
     comp_byte_count = rui(state)

@@ -50,15 +50,20 @@ function Base.show(io::IO, oas::Oasis)
     end
 end
 
+# Showing a cell never decodes it; it only reports what is already known.
 function Base.show(io::IO, cell::Cell)
-    nplacements = length(cell.placements)
-    nshapes = length(cell.shapes)
-    print(io, "Cell $(cell.name) with $(nplacements) placement$(nplacements == 1 ? "" : "s") and $(nshapes) shape$(nshapes == 1 ? "" : "s")")
-end
-
-function Base.show(io::IO, cell::LazyCell)
-    print(io, "Lazy cell ")
-    print(io, cell.name)
+    print(io, "Cell $(cell.name)")
+    if isloaded(cell)
+        nplacements, nshapes = length(cell.placements), length(cell.shapes)
+    elseif !isnothing(cell.index)
+        nplacements = length(cell.index.placements)
+        nshapes = sum(c -> c.records, values(cell.index.layers); init = 0)
+    else
+        print(io, " (tier 0)")
+        return
+    end
+    print(io, " with $(nplacements) placement$(nplacements == 1 ? "" : "s") and $(nshapes) shape$(nshapes == 1 ? "" : "s")")
+    isloaded(cell) || print(io, " (tier $(tier(cell)))")
 end
 
 # Spelled out rather than inherited from AbstractVector so that the grouped layout of a
@@ -144,8 +149,11 @@ function _show_hierarchy(
             new_prefix = prefix * (last ? "   " : "│  ")
         end
         root_cell = oas[root_name]
-        if root_cell isa Cell
-            children = unique([p.cellName for p in root_cell.placements])
+        isnothing(root_cell) && continue
+        # Only what is known without decoding gets shown.
+        known = known_placements(root_cell)
+        if !isnothing(known)
+            children = unique([p.cellName for p in known])
             nunique_children = length(children)
             # If `maxdepth` is reached, we check whether the current element has any further children.
             # Rather than printing them, we print an ellipsis (⋯) to indicate that there are children.
@@ -167,7 +175,7 @@ function _show_hierarchy(
                     last = child_is_last
                 )
             end
-        elseif root_cell isa LazyCell
+        else
             print(io, "\n", new_prefix, "└─ ?")
         end
     end

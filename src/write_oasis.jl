@@ -14,7 +14,7 @@ Write an [`Oasis`](@ref) object to an OASIS file.
 
 The output is first written to a temporary file in the same directory, which then replaces
 `filename`. As a result, a failed write leaves an existing file untouched, and `filename` may
-be a file that [`LazyCell`](@ref) objects were read from: on Linux and macOS, those cells keep
+be a file that cells which aren't loaded are read from: on Linux and macOS, those cells keep
 seeing the original contents. (Windows refuses to replace a file that is still in use.)
 """
 function oasiswrite(filename::AbstractString, oas::Oasis; bufsize = 16 * 1024 * 1024)

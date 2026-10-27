@@ -279,9 +279,9 @@ end
     @testset "Survives lazy cells being replaced in place" begin
         filepath = joinpath(@__DIR__, "testdata", "nested.oas")
         oas = oasisread(filepath; lazy = true)
-        @test oas[:BOTTOM] isa LazyCell
+        @test !isloaded(oas[:BOTTOM])
         load_cell!(oas, :BOTTOM)
-        @test oas[:BOTTOM] isa Cell
+        @test isloaded(oas[:BOTTOM])
         @test name(oas[:BOTTOM]) == :BOTTOM
     end
 end
@@ -291,8 +291,9 @@ end
     oas = oasisread(filepath; lazy = true)
     lazy_cell = oas[:TOP]
 
-    # `LazyCell.bytes` is a view into the mmap; wrapping it in a parser state used to hit an
-    # implicit convert to Vector{UInt8}, copying the entire cell.
-    @test OasisTools.CellParserState(lazy_cell).buf === lazy_cell.bytes
-    @test OasisTools.LazyCellParserState(lazy_cell.bytes, 1).buf === lazy_cell.bytes
+    # The bytes of a cell are a view into the mmap; wrapping them in a parser state used to hit
+    # an implicit convert to Vector{UInt8}, copying the entire cell.
+    source = lazy_cell.source
+    @test OasisTools.CellParserState(source, OasisTools.ContentsSink()).buf === source.bytes
+    @test OasisTools.SkipParserState(source.bytes, 1).buf === source.bytes
 end

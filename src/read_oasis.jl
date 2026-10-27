@@ -5,9 +5,10 @@ Read your OASIS file in Julia.
 
 # Keyword Arguments
 
-- `lazy::Bool = false`: If set to `true`, `oasisread` will use an experimental lazy loader
-  which does not load the contents of the cells into memory until a cell explicitly gets
-  prompted.
+- `lazy::Bool = false`: If set to `true`, the contents of the cells are not loaded into memory,
+  but decoded from the file as and when they are needed. Opening a file this way only involves
+  finding where each cell is stored. See [`tier`](@ref) for what can be learned about a cell
+  without loading it.
 
 # Example
 
@@ -42,28 +43,25 @@ function oasisread(filename::AbstractString; lazy::Bool = false)
     end
 
     if lazy
-        # In case of lazy loading, make a best-effort attempt at finding the root cells by
-        # looking for the S_TOP_CELL property. (In case of non-lazy loading, we are guaranteed
-        # to find the root cells by using the placement information.)
+        # Without decoding the cells, the best we can do to find the root cells is to look for
+        # the S_TOP_CELL property. (`update_roots!` finds them reliably, by decoding the cells'
+        # placements.)
         find_root_cells!(state)
     end
 
-    lazy_cells = process_cells(state)
-    oas = Oasis(lazy_cells, state.layers; unit = state.metadata.unit)
-    
+    oas = Oasis(process_cells(state), state.layers; unit = state.metadata.unit)
+
     if !lazy
-        # In case of non-lazy loading, parse each of the lazy-loaded cells and replace them with
-        # ordinary cells.
         load_all_cells!(oas)
         # Use the recorded cell placements to find the root cells.
         update_roots!(oas)
     end
-    
+
     return oas
 end
 
 function process_cells(state::FileParserState)
-    lazy_cells = Vector{LazyCell}(undef, length(state.cells))
+    cs = Vector{Cell}(undef, length(state.cells))
 
     for (i, preprocessed_cell) in enumerate(state.cells)
         if preprocessed_cell.nameOrNumber isa UInt64
@@ -72,17 +70,13 @@ function process_cells(state::FileParserState)
             cell_name = preprocessed_cell.nameOrNumber
         end
 
-        is_root = cell_name in state.metadata.roots
-        lazy_cells[i] = LazyCell(
-            cell_name,
-            preprocessed_cell.bytes,
-            state.cellnameReferences,
-            state.textstringReferences,
-            is_root
+        source = CellSource(
+            preprocessed_cell.bytes, state.cellnameReferences, state.textstringReferences
         )
+        cs[i] = Cell(cell_name, source, cell_name in state.metadata.roots)
     end
 
-    return lazy_cells
+    return cs
 end
 
 function find_root_cells!(state::FileParserState)
