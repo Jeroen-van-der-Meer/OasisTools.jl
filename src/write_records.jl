@@ -39,17 +39,38 @@ function write_textlayername(state::WriterState, layer::Layer)
     write_interval(state, layer.datatypeNumber)
 end
 
-function write_cell(state::WriterState, cell::Cell)
+# With compression, the contents of a cell go into CBLOCKs of about this many bytes before
+# compression. DEFLATE only looks back 32 KiB, so larger blocks would hardly compress any better,
+# while this keeps memory use bounded for large cells.
+const CBLOCK_SIZE = 1024 * 1024
+
+function write_cell(state::WriterState, cell::Cell; compress::Bool = true)
     write_byte(state, 13) # CELL
     wui(state, state.cellnameReferences[cell.name])
     reset_modal_variables!(state.mod)
+    if !compress
+        write_cell_contents(() -> nothing, state, cell)
+        return
+    end
+    # The CELL record itself may not be compressed, but everything after it goes through
+    # `block_state`, which shares modal variables and references with `state`. A block may only
+    # end between records, as records may not be split across CBLOCKs.
+    block_state = WriterState(IOBuffer(), state)
+    write_cell_contents(block_state, cell) do
+        pending_bytes(block_state) >= CBLOCK_SIZE && flush_cblock!(state, block_state)
+    end
+    flush_cblock!(state, block_state)
+end
+
+# Writes the records of `cell`, calling `after_record` after each one.
+function write_cell_contents(after_record, state::WriterState, cell::Cell)
     if isloaded(cell) || !isempty(cell.edits)
         # Hand every element to the encoder, decoding them first if the cell isn't loaded. As
         # `decode_cell` passes the shapes of a loaded cell on a kind at a time, the modal
         # variables stay stable across each group.
-        decode_cell(state, cell)
+        decode_cell(WriterSink(state, after_record), cell)
     else
-        copywrite_source(state, cell.source)
+        copywrite_source(state, cell.source, after_record)
     end
 end
 
@@ -64,12 +85,13 @@ end
 # The contents of a cell that hasn't been loaded or changed can mostly be copied byte for byte.
 # Only the references to cell names and text strings need translating, as the numbering is
 # specific to each file.
-function copywrite_source(state::WriterState, source::CellSource)
+function copywrite_source(state::WriterState, source::CellSource, after_record = () -> nothing)
     cell_parser_state = SkipParserState(source.bytes, 1)
     nbytes = length(source.bytes)
     while cell_parser_state.pos <= nbytes
         record_type = read_byte(cell_parser_state)
         copywrite_record(record_type, state, source, cell_parser_state)
+        after_record()
     end
 end
 

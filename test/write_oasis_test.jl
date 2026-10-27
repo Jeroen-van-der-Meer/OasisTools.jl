@@ -7,7 +7,7 @@
         state = OasisTools.WriterState(oas, tempname(), 1024 * 1024)
         state.cellnameReferences[:TOP] = 123
         cell = oas["TOP"]
-        OasisTools.write_cell(state, cell)
+        OasisTools.write_cell(state, cell; compress = false)
 
         @test read_and_reset(state, state.pos - 1) == [
             0x0d, # CELL record
@@ -27,7 +27,7 @@
         state.cellnameReferences[:TOP] = 123
         state.cellnameReferences[:BOTTOM] = 124
         cell = oas["TOP"]
-        OasisTools.write_cell(state, cell)
+        OasisTools.write_cell(state, cell; compress = false)
 
         @test read_and_reset(state, state.pos - 1) == [
             0x0d, # CELL record
@@ -48,7 +48,7 @@
         state = OasisTools.WriterState(oas, tempname(), 1024 * 1024)
         state.cellnameReferences[:BOTTOM] = 124
         cell = oas["BOTTOM"]
-        OasisTools.write_cell(state, cell)
+        OasisTools.write_cell(state, cell; compress = false)
 
         @test read_and_reset(state, state.pos - 1) == [
             0x0d, # CELL record
@@ -75,7 +75,7 @@
 
         state = OasisTools.WriterState(tempname(), 1024)
         state.cellnameReferences[:TOP] = 123
-        OasisTools.write_cell(state, cell)
+        OasisTools.write_cell(state, cell; compress = false)
         @test read_and_reset(state, state.pos - 1) == vcat(UInt8[0x0d, 0x7b], bytes)
         close(state.io)
 
@@ -549,7 +549,7 @@ end
         add_cell!(oas, :A)
         add_shape!(oas[:A], Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(10, 10)), 0, 0)
         path = tempname()
-        oasiswrite(path, oas)
+        oasiswrite(path, oas; compress = false) # So that the records can be inspected
         oas2 = oasisread(path; lazy = true)
         bytes = oas2[:A].source.bytes
         @test bytes[1] == 20 # RECTANGLE

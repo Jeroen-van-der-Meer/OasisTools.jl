@@ -1,5 +1,5 @@
 """
-    oasiswrite(filename, oas; bufsize)
+    oasiswrite(filename, oas; bufsize, compress)
 
 Write an [`Oasis`](@ref) object to an OASIS file.
 
@@ -11,20 +11,26 @@ Write an [`Oasis`](@ref) object to an OASIS file.
 # Keyword Arguments
 
 - `bufsize::Integer = 16 * 1024 * 1024`: Size of the output buffer in bytes.
+- `compress::Bool = true`: Whether to compress the file's name tables and the contents of its
+  cells with CBLOCK records. Writing without compression is faster, but makes for larger
+  files.
 
 The output is first written to a temporary file in the same directory, which then replaces
 `filename`. As a result, a failed write leaves an existing file untouched, and `filename` may
 be a file that cells which aren't loaded are read from: on Linux and macOS, those cells keep
 seeing the original contents. (Windows refuses to replace a file that is still in use.)
 """
-function oasiswrite(filename::AbstractString, oas::Oasis; bufsize = 16 * 1024 * 1024)
+function oasiswrite(
+    filename::AbstractString, oas::Oasis;
+    bufsize = 16 * 1024 * 1024, compress::Bool = true
+)
     # Resolving symlinks makes us replace the file a link points to rather than the link itself.
     target = ispath(filename) ? realpath(filename) : abspath(filename)
     temp = tempname(dirname(target); cleanup = false)
     try
         state = WriterState(oas, temp, bufsize)
         try
-            write_oasis(state, oas)
+            write_oasis(state, oas; compress = compress)
         finally
             close(state.io)
         end
@@ -38,16 +44,17 @@ function oasiswrite(filename::AbstractString, oas::Oasis; bufsize = 16 * 1024 * 
     return nothing
 end
 
-function write_oasis(state::WriterState, oas::Oasis)
+function write_oasis(state::WriterState, oas::Oasis; compress::Bool = true)
     write_bytes(state, MAGIC_BYTES)
     write_start(state, unit(oas))
     write_roots(state)
-    write_cblock(state) do cblock_state
-        write_propname(cblock_state, :S_TOP_CELL)
-        construct_and_write_cellname_references(cblock_state)
-        write_layers(cblock_state)
+    write_tables = function (table_state)
+        write_propname(table_state, :S_TOP_CELL)
+        construct_and_write_cellname_references(table_state)
+        write_layers(table_state)
     end
-    write_cells(state)
+    compress ? write_cblock(write_tables, state) : write_tables(state)
+    write_cells(state; compress = compress)
     write_end(state)
 
     # Write remaining bytes in buffer.
@@ -75,8 +82,8 @@ function write_layers(state::WriterState)
     end
 end
 
-function write_cells(state)
+function write_cells(state; compress::Bool = true)
     for cell in state.cells
-        write_cell(state, cell)
+        write_cell(state, cell; compress = compress)
     end
 end

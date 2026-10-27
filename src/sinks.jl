@@ -46,6 +46,18 @@ push_element!(::ShapeCallback, ::CellPlacement) = nothing
 push_element!(state::WriterState, shape::Shape) = write_shape(state, shape)
 push_element!(state::WriterState, placement::CellPlacement) = write_placement_record(state, placement)
 
+# Writes elements to a file, calling `after_record` after each one.
+struct WriterSink{F}
+    state::WriterState
+    after_record::F
+end
+
+function push_element!(sink::WriterSink, element::Union{Shape, CellPlacement})
+    push_element!(sink.state, element)
+    sink.after_record()
+    return nothing
+end
+
 # Passes elements through a list of edits on their way to another sink.
 struct EditedSink{S}
     sink::S

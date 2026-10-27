@@ -5,6 +5,8 @@
 - Layer filtering API.
 - Expanded OASIS editing API.
 - More transparent errors.
+- More efficient writer.
+- Various bugfixes.
 
 ## v0.2.0
 
