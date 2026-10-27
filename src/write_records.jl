@@ -493,13 +493,22 @@ function write_shape(state::WriterState, shape::Shape{Path{2, Int64}})
         info_byte = set_bit_to_one(info_byte, 6)
     end
 
-    # No extension scheme (bit 1 stays off)
+    # Paths are read with their extensions folded into their end points, so they always end
+    # flush. The extensions only need spelling out when the modal variables don't say so already,
+    # as is the case for the first path in a cell.
+    extension_explicit = state.mod.pathStartExtension != 0 || state.mod.pathEndExtension != 0
+    if extension_explicit
+        info_byte = set_bit_to_one(info_byte, 1)
+        state.mod.pathStartExtension = 0
+        state.mod.pathEndExtension = 0
+    end
 
     write_byte(state, 22) # PATH
     write_byte(state, info_byte)
     layer_explicit && wui(state, layer_number)
     datatype_explicit && wui(state, datatype_number)
     halfwidth_explicit && wui(state, halfwidth)
+    extension_explicit && write_byte(state, 0b0101) # Flush at both ends
     write_point_list(state, points)
     x_explicit && write_signed_integer(state, x)
     y_explicit && write_signed_integer(state, y)

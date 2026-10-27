@@ -49,6 +49,8 @@ Base.@kwdef mutable struct WriterModalVariables
     geometryW::Union{Nothing, UInt64} = nothing
     geometryH::Union{Nothing, UInt64} = nothing
     pathHalfwidth::Union{Nothing, UInt64} = nothing
+    pathStartExtension::Union{Nothing, Int64} = nothing
+    pathEndExtension::Union{Nothing, Int64} = nothing
     circleRadius::Union{Nothing, UInt64} = nothing
 end
 

@@ -259,6 +259,7 @@ function read_path(state::CellParserState)
             state.mod.pathStartExtension = start_extension
         else
             start_extension = read_signed_integer(state)
+            state.mod.pathStartExtension = start_extension
         end
         EE_bits = extension_scheme & 0x03
         if EE_bits == 0x00
@@ -272,6 +273,7 @@ function read_path(state::CellParserState)
             state.mod.pathEndExtension = end_extension
         else
             end_extension = read_signed_integer(state)
+            state.mod.pathEndExtension = end_extension
         end
     else
         start_extension = state.mod.pathStartExtension
