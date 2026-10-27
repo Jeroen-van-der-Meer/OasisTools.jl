@@ -293,6 +293,10 @@ function read_point_list(state)
     # In the OASIS specification, this first point is implied because an offset is provided
     # alongside the point list.
     type = read_byte(state)
+    return read_point_list(state, type)
+end
+
+function read_point_list(state, type::UInt8)
     vertex_count = rui(state)
     # Ordering is changed based on what appears to be used most often in practice.
     type == 0x01 && return read_1_delta_list_vertical_first(state, vertex_count)
@@ -302,6 +306,26 @@ function read_point_list(state)
     type == 0x03 && return read_3_delta_list(state, vertex_count)
     type == 0x05 && return cumsum(read_g_delta_list(state, vertex_count))
     parse_error(state, "Unknown point list type $type")
+end
+
+function read_polygon_point_list(state)
+    type = read_byte(state)
+    l = read_point_list(state, type)
+    type <= 0x01 && push_implicit_manhattan_delta!(l, type)
+    return l
+end
+
+# For polygons, point lists of type 0 and 1 omit their last two displacements. The second of
+# these is implied by the polygon closing itself, but the first has to be added back: it moves
+# us level with the starting point, along whichever direction is next in the alternation.
+function push_implicit_manhattan_delta!(l::Vector{Point{2, Int64}}, type::UInt8)
+    vertex_count = length(l) - 1
+    # Type 0 starts with a horizontal displacement and type 1 with a vertical one.
+    next_is_horizontal = iseven(vertex_count) == (type == 0x00)
+    offset = sum(l)
+    delta = next_is_horizontal ? Point{2, Int64}(-offset[1], 0) : Point{2, Int64}(0, -offset[2])
+    iszero(delta) || push!(l, delta)
+    return l
 end
 
 function read_property_value(state)

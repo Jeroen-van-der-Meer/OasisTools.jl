@@ -225,7 +225,7 @@ function read_polygon(state::CellParserState)
     info_byte = read_byte(state)
     layer_number = read_or_modal(state, rui, Val(:layer), info_byte, 8)
     datatype_number = read_or_modal(state, rui, Val(:datatype), info_byte, 7)
-    point_list = read_or_modal(state, read_point_list, Val(:polygonPointList), info_byte, 3)
+    point_list = read_or_modal(state, read_polygon_point_list, Val(:polygonPointList), info_byte, 3)
     x, y = read_or_modal_xy(state, Val(:geometryX), Val(:geometryY), info_byte, 4)
     repetition = read_repetition(state, info_byte, 6)
 
