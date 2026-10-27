@@ -1,11 +1,6 @@
 module OasisPlots
 
-if isdefined(Base, :get_extension)
-    using OasisTools
-else
-    using ..OasisTools
-end
-
+using OasisTools
 using GeometryBasics
 using Makie
 

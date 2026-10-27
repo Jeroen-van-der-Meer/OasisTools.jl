@@ -6,7 +6,6 @@ version = "0.2.0"
 [deps]
 CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
 GeometryBasics = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
-Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
 
 [weakdeps]
@@ -19,5 +18,5 @@ OasisPlots = "Makie"
 CodecZlib = "0.6, 0.7"
 GeometryBasics = "0.5.1"
 Makie = "0.22, 0.23, 0.24"
-Mmap = "1.8"
-julia = "1.8"
+Mmap = "1.10"
+julia = "1.10"
