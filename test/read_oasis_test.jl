@@ -411,15 +411,9 @@ end
         @test_throws OasisParseError parse_cell_bytes(UInt8[0x63])
     end
     @testset "Not an OASIS file" begin
-        path, io = mktemp()
-        write(io, zeros(UInt8, 64))
-        close(io)
+        path = tempname()
+        write(path, zeros(UInt8, 64))
         @test_throws OasisParseError oasisread(path)
-        GC.gc()
-        try
-            rm(path; force = true)
-        catch
-        end
     end
     @testset "Error carries a byte offset" begin
         err = try

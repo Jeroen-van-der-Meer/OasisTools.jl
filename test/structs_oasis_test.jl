@@ -295,8 +295,4 @@ end
     # implicit convert to Vector{UInt8}, copying the entire cell.
     @test OasisTools.CellParserState(lazy_cell).buf === lazy_cell.bytes
     @test OasisTools.LazyCellParserState(lazy_cell.bytes, 1).buf === lazy_cell.bytes
-
-    oas = nothing
-    lazy_cell = nothing
-    GC.gc()
 end
