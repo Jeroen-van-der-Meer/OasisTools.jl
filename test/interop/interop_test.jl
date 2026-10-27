@@ -45,12 +45,16 @@ end
 
 klayout_file(case::String, options::String...) = KLAYOUT_FILES[(case, collect(options))]
 
-# Comparisons by KLayout, queued up to run together at the end, in "KLayout's verdicts".
+# Checks by KLayout, queued up to run together at the end, in "KLayout's verdicts". Each is a
+# helper command, described by a label in case of failure.
 const KLAYOUT_COMPARISONS = Tuple{String, Vector{String}}[]
 
-# Queues a comparison of `candidate` with `reference`, described by `label` in case of failure.
+queue_klayout_check(label::String, command::String...) =
+    push!(KLAYOUT_COMPARISONS, (label, collect(command)))
+
+# Queues a comparison of `candidate` with `reference`.
 compare_with_klayout(label::String, reference::String, candidate::String, options::String...) =
-    push!(KLAYOUT_COMPARISONS, (label, ["compare", reference, candidate, options...]))
+    queue_klayout_check(label, "compare", reference, candidate, options...)
 
 function written(oas::Oasis; compress::Bool = true)
     path = tempname() * ".oas"
@@ -158,6 +162,20 @@ end
             placed(mod(rotation, 360), flipped, magnification),
             placed(rotation, flipped, magnification)
         )
+    end
+end
+
+@testset "Finding instances agrees with KLayout" begin
+    for (case, targets) in (("hierarchy", ["LEAF", "MID", "EMPTY", "ONLY_PLACEMENTS"]), ("reticle", ["LEAF", "VIA", "DIE"]))
+        file = klayout_file(case)
+        oas = oasisread(file; lazy = true)
+        csv = tempname() * ".csv"
+        open(csv, "w") do io
+            for target in targets, p in find_instances(oas, Symbol(target); top = :TOP)
+                println(io, join((p.cellName, p.location..., mod(p.rotation, 360), p.magnification, p.flipped), ","))
+            end
+        end
+        queue_klayout_check("Instances in $case", "check_instances", file, "TOP", csv, targets...)
     end
 end
 

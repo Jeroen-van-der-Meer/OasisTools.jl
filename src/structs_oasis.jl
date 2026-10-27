@@ -161,16 +161,9 @@ end
 function _transform_point(
     p::Point{2, Int64}, rotation::Float64, magnification::Float64, flipped::Bool
 )
-    x, y = Float64(p[1]), Float64(p[2])
-    if flipped
-        y = -y
-    end
-    θ = deg2rad(rotation)
-    c, s = cos(θ), sin(θ)
-    return Point{2, Int64}(
-        round(Int64, magnification * (c * x - s * y)),
-        round(Int64, magnification * (s * x + c * y))
-    )
+    x, y = transform_point_float(p, rotation, magnification, flipped)
+    # Rounding halves away from zero, as KLayout does.
+    return Point{2, Int64}(round(Int64, x, RoundNearestTiesAway), round(Int64, y, RoundNearestTiesAway))
 end
 
 _transform_repetition(::Nothing, ::Float64, ::Float64, ::Bool) = nothing

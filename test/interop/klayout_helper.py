@@ -208,7 +208,7 @@ def make_hierarchy(layout):
     empty = layout.create_cell("EMPTY")
     mid = layout.create_cell("MID")
     for i, rotation in enumerate(range(8)):
-        mid.insert(db.CellInstArray(leaf.cell_index(), db.Trans(rotation, db.Vector(1000 * i, 0))))
+        mid.insert(db.CellInstArray(leaf.cell_index(), db.Trans(rotation % 4, rotation >= 4, db.Vector(1000 * i, 0))))
     mid.insert(db.CellInstArray(empty.cell_index(), db.Trans(db.Vector(-500, -500))))
     only_placements = layout.create_cell("ONLY_PLACEMENTS")
     only_placements.insert(db.CellInstArray(mid.cell_index(), db.Trans(db.Vector(0, 0))))
@@ -247,7 +247,7 @@ def make_reticle(layout):
     die = layout.create_cell("DIE")
     die.insert(db.CellInstArray(leaf.cell_index(), db.Trans(db.Vector(0, 0)), db.Vector(1000, 0), db.Vector(0, 1200), 20, 15))
     for rotation in range(8):
-        die.insert(db.CellInstArray(leaf.cell_index(), db.Trans(rotation, db.Vector(30000, 3000 * rotation))))
+        die.insert(db.CellInstArray(leaf.cell_index(), db.Trans(rotation % 4, rotation >= 4, db.Vector(30000, 3000 * rotation))))
     die.insert(db.CellInstArray(leaf.cell_index(), db.ICplxTrans(2.0, 90, False, 34000, 0)))
     die.insert(db.CellInstArray(via.cell_index(), db.Trans(db.Vector(25000, 0)), db.Vector(100, 0), db.Vector(0, 100), 30, 30))
     die.shapes(layout.layer(1, 0)).insert(db.Box(-100, -100, 36000, 0))
@@ -291,6 +291,40 @@ def generate(args):
     layout.write(out, save)
 
 
+def check_instances(args):
+    """check_instances FILE TOP CSV CELL...: compares the instances of the given cells below TOP
+    listed in CSV (one `cell,x,y,rotation,magnification,flipped` row per instance, in TOP's
+    coordinates) with those KLayout finds."""
+    path, top, csv_path, targets = args[0], args[1], args[2], set(args[3:])
+    layout, warnings = read_layout(path)
+    for warning in warnings:
+        problem(warning)
+    expected = []
+
+    def visit(cell, trans):
+        for inst in cell.each_inst():
+            child = layout.cell(inst.cell_index)
+            for t in inst.cell_inst.each_cplx_trans():
+                placed = trans * t
+                if child.name in targets:
+                    expected.append((child.name, round(placed.disp.x), round(placed.disp.y),
+                                     round(placed.angle % 360, 6), round(placed.mag, 6), placed.is_mirror()))
+                visit(child, placed)
+
+    visit(layout.cell(top), db.ICplxTrans())
+    found = []
+    with open(csv_path) as f:
+        for line in f:
+            cell, x, y, rotation, magnification, flipped = line.strip().split(",")
+            found.append((cell, int(x), int(y), round(float(rotation), 6), round(float(magnification), 6),
+                          flipped == "true"))
+    if sorted(expected) != sorted(found):
+        missing = [r for r in expected if r not in found][:3]
+        extra = [r for r in found if r not in expected][:3]
+        problem(f"Instances differ: {len(expected)} expected, {len(found)} found; "
+                f"missing {missing}, extra {extra}")
+
+
 def batch(args):
     """Runs the commands in a file, one per line with tab-separated arguments, printing
     `END i` after the output of the i-th command."""
@@ -304,7 +338,7 @@ def batch(args):
         print(f"END {i}", flush=True)
 
 
-COMMANDS = {"generate": generate, "compare": compare, "batch": batch}
+COMMANDS = {"generate": generate, "compare": compare, "check_instances": check_instances, "batch": batch}
 
 
 if __name__ == "__main__":

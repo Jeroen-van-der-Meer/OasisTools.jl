@@ -14,7 +14,7 @@ include("hierarchy_test.jl")
 include("cells_test.jl")
 include("write_data_test.jl")
 include("write_oasis_test.jl")
-if haskey(ENV, "KLAYOUT_PYTHON")
+if !isempty(get(ENV, "KLAYOUT_PYTHON", ""))
     include("interop/interop_test.jl")
 else
     @info "Skipping the tests against KLayout. To run them, set KLAYOUT_PYTHON to a Python " *

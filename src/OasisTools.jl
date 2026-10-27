@@ -16,6 +16,7 @@ export CellPlacement
 export cells
 export crop
 export expand
+export find_instances
 export extent
 export foreach_shape
 export index_all_cells!
