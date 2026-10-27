@@ -10,8 +10,8 @@ end
 
 function write_end(state::WriterState)
     write_byte(state, 2) # END
-    padding_string = "In the beginning was the Word, and the Word was with God, and the Word was a god. What has come into existence by means of him was life, and the life was the light of men. The Word became flesh and resided among us; he was full of divine favor and truth."
-    write_a_string(state, padding_string) # Make END record exactly 256 bytes long
+    wui(state, 252)  # Make END record exactly 256 bytes long
+    write_bytes(state, zeros(UInt8, 252))
     write_byte(state, 0) # Validation scheme: No validation
 end
 
