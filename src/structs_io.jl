@@ -114,7 +114,7 @@ mutable struct WriterState
     const cells::Vector{Union{LazyCell, Cell}}
     const layers::Vector{Layer}
     const cellnameReferences::Dict{Symbol, UInt64}
-    const mod::ModalVariables
+    const mod::WriterModalVariables
 end
 
 function WriterState(oas::Oasis, filename::AbstractString, bufsize::Integer)
@@ -122,7 +122,7 @@ function WriterState(oas::Oasis, filename::AbstractString, bufsize::Integer)
         open(filename, "w"),
         Vector{UInt8}(undef, bufsize), bufsize, 1,
         oas.cells, oas.layers,
-        Dict(), ModalVariables()
+        Dict(), WriterModalVariables()
     )
 end
 

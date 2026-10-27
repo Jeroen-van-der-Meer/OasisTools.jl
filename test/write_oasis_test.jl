@@ -522,3 +522,45 @@ GC.gc()
         @test s.shape.exterior == pts
     end
 end
+
+GC.gc()
+
+@testset "Modal variables when writing" begin
+    @testset "Reset at every cell" begin
+        # Readers reset the modal variables at every CELL record, so the second cell must not
+        # rely on values that were set in the first.
+        oas = Oasis()
+        rect = Rect{2, Int64}(Point{2, Int64}(5, 5), Point{2, Int64}(10, 20))
+        for cell_name in (:A, :B)
+            add_cell!(oas, cell_name)
+            add_shape!(oas[cell_name], rect, 3, 2)
+            add_placement!(oas[cell_name], :C, Point{2, Int64}(7, 8))
+        end
+        add_cell!(oas, :C)
+        oasiswrite("temp", oas)
+        oas2 = oasisread("temp")
+        for cell_name in (:A, :B)
+            s = only(shapes(oas2[cell_name]))
+            @test s.shape == rect
+            @test s.layerNumber == 3
+            @test s.datatypeNumber == 2
+            p = only(placements(oas2[cell_name]))
+            @test p.cellName == :C
+            @test p.location == Point{2, Int64}(7, 8)
+        end
+    end
+    GC.gc()
+    @testset "Undefined modal variables are written explicitly" begin
+        # A square on layer 0, datatype 0 at the origin. Layer, datatype and width start out
+        # undefined and must be present; x and y start out at 0 and may be omitted.
+        oas = Oasis()
+        add_cell!(oas, :A)
+        add_shape!(oas[:A], Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(10, 10)), 0, 0)
+        oasiswrite("temp", oas)
+        oas2 = oasisread("temp"; lazy = true)
+        bytes = oas2[:A].bytes
+        @test bytes[1] == 20 # RECTANGLE
+        @test bytes[2] == 0b11000011 # S, W, D and L set; X and Y omitted
+        @test bytes[3:5] == [0x00, 0x00, 0x0a] # layer, datatype, width
+    end
+end

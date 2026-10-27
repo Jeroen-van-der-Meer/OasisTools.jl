@@ -42,6 +42,7 @@ end
 function write_cell(state::WriterState, cell::Cell)
     write_byte(state, 13) # CELL
     wui(state, state.cellnameReferences[cell.name])
+    reset_modal_variables!(state.mod)
     for placement in placements(cell)
         if !isone(placement.magnification) || !iszero(mod(placement.rotation, 90))
             write_placement_mag_angle(state, placement)
@@ -65,6 +66,8 @@ function write_cell(state::WriterState, cell::LazyCell)
     write_byte(state, 13) # CELL
     # Write a new reference number
     wui(state, state.cellnameReferences[cell.name])
+    # Keep the writer's view of the modal variables in step with what a reader sees.
+    reset_modal_variables!(state.mod)
 
     # When writing a LazyCell, we mostly just have to copy-paste bytes onto our target buffer.
     # To figure out how many bytes to copy, we invoke the same parser that we also use for
