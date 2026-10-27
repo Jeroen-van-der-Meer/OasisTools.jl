@@ -130,7 +130,7 @@ function write_placement(state::WriterState, placement::CellPlacement)
         info_byte = set_bit_to_one(info_byte, 5)
     end
 
-    info_byte |= UInt8(placement.rotation ÷ 90) << 1
+    info_byte |= UInt8(mod(placement.rotation, 360) ÷ 90) << 1
 
     if placement.flipped
         info_byte = set_bit_to_one(info_byte, 8)
