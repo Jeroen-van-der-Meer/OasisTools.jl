@@ -53,8 +53,20 @@ Or:
 
 The cell doesn't need to be loaded.
 """
-add_shape!(cell::Cell, shape::Shape) =
-    isloaded(cell) ? (push!(cell.shapes, shape); cell) : append_element!(cell, shape)
+function add_shape!(cell::Cell, shape::Shape)
+    check_writable(shape)
+    return isloaded(cell) ? (push!(cell.shapes, shape); cell) : append_element!(cell, shape)
+end
+
+# OASIS polygons can't have holes. Checked when adding shapes, so that problems show up before
+# any work is done, and again when writing, for shapes added by other means.
+check_writable(::Shape) = nothing
+function check_writable(shape::Shape{Polygon{2, Int64}})
+    isempty(shape.shape.interiors) || throw(ArgumentError(
+        "OASIS polygons can't have holes; split the polygon into polygons without holes first"
+    ))
+    return nothing
+end
 
 function add_shape!(
     cell::Cell, geom, layer::Integer, datatype::Integer;

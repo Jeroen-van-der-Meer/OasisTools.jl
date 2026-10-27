@@ -102,6 +102,6 @@ Both files must use the same database units, and their cells must have different
 # Caveats
 
 - There *will* be bugs.
-- Properties are currently ignored.
-- Backwards-compatible extensions are not supported. You will get an error if your file contains any.
+- Properties are currently ignored, and left out when writing.
+- Extension records (XNAME, XELEMENT and XGEOMETRY) are skipped, with a warning.
 - Curvilinear features are not yet supported.

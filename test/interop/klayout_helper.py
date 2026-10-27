@@ -265,6 +265,16 @@ def make_large(layout):
         top.shapes(layout.layer(1, 0)).insert(db.Box(x, y, x + rng.randrange(10, 300), y + rng.randrange(10, 300)))
 
 
+def make_properties(layout):
+    """Properties on shapes and placements."""
+    sub = layout.create_cell("SUB")
+    sub.shapes(layout.layer(1, 0)).insert(db.Box(0, 0, 10, 10), layout.properties_id({"kind": "sub"}))
+    top = layout.create_cell("TOP")
+    top.shapes(layout.layer(1, 0)).insert(db.Box(0, 0, 100, 100), layout.properties_id({1: "net_a", "name": "label"}))
+    top.shapes(layout.layer(2, 0)).insert(db.Box(200, 0, 300, 100), layout.properties_id({"kind": "via"}))
+    top.insert(db.CellInstArray(sub.cell_index(), db.Trans(db.Vector(500, 0))), layout.properties_id({"instance": "X1"}))
+
+
 def make_empty(layout):
     """A single cell without anything in it."""
     layout.create_cell("TOP")
@@ -272,7 +282,7 @@ def make_empty(layout):
 
 CASES = {
     "shapes": make_shapes, "hierarchy": make_hierarchy, "reticle": make_reticle,
-    "large": make_large, "empty": make_empty,
+    "large": make_large, "empty": make_empty, "properties": make_properties,
 }
 
 

@@ -102,7 +102,18 @@ width.
 struct Path{Dim, T<:Real} <: AbstractGeometry{Dim, T}
     points::Vector{Point{Dim, T}}
     width::T
+
+    function Path{Dim, T}(points::Vector{Point{Dim, T}}, width::T) where {Dim, T <: Real}
+        # OASIS stores half of the width of a path, so odd widths couldn't be written.
+        T <: Integer && isodd(width) && throw(ArgumentError(
+            "The width of a path must be even, as OASIS stores half of it; got $width"
+        ))
+        return new{Dim, T}(points, width)
+    end
 end
+
+Path(points::Vector{Point{Dim, T}}, width::Real) where {Dim, T <: Real} =
+    Path{Dim, T}(points, convert(T, width))
 
 """
     struct CellPlacement
@@ -518,14 +529,6 @@ function get_cell(oas::Oasis, name::Symbol)
     return oas.cells[index]
 end
 
-get_cell(cells::AbstractVector{Cell}, name::AbstractString) =
-    get_cell(cells, Symbol(name))
-function get_cell(cells::AbstractVector{Cell}, name::Symbol)
-    index = find_cell(cells, name)
-    isnothing(index) && return nothing
-    return cells[index]
-end
-
 find_cell(oas::Oasis, name::AbstractString) = find_cell(oas, Symbol(name))
 function find_cell(oas::Oasis, name::Symbol)
     cs = oas.cells
@@ -537,11 +540,6 @@ function find_cell(oas::Oasis, name::Symbol)
     reindex_cells!(oas)
     return get(oas._index, name, nothing)
 end
-
-find_cell(cells::AbstractVector{Cell}, name::AbstractString) =
-    find_cell(cells, Symbol(name))
-find_cell(cells::AbstractVector{Cell}, name::Symbol) =
-    findfirst(cell -> cell.name == name, cells)
 
 """
     unit(oas)

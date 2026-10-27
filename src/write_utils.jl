@@ -9,7 +9,9 @@ function write_cellname_reference(
         cellname_as_ref = bit_is_one(info_byte, 2)
         if cellname_as_ref
             cellname_number = rui(cell_parser_state)
-            cellname = source.cellnameReferences[cellname_number]
+            cellname = lookup_reference(
+                cell_parser_state, source.cellnameReferences, cellname_number, "cell name", "CELLNAME"
+            )
         else
             cellname = read_symbol(cell_parser_state)
             # Change the bit indicating that the reference was a string, because we choose to
@@ -40,7 +42,9 @@ function write_text(
         textstring_as_ref = bit_is_one(info_byte, 3)
         if textstring_as_ref
             textstring_number = rui(cell_parser_state)
-            textstring = source.textstringReferences[textstring_number]
+            textstring = lookup_reference(
+                cell_parser_state, source.textstringReferences, textstring_number, "text string", "TEXTSTRING"
+            )
             # Change the bit indicating that the reference was a string, because we choose to
             # store a number instead.
             info_byte = set_bit_to_zero(info_byte, 3)

@@ -56,20 +56,6 @@ function read_repetition(
     end
 end
 
-function read_nrep(
-    state,
-    info_byte::UInt8,
-    position::Int64
-)
-    if bit_is_one(info_byte, position)
-        v = read_nrep(state)
-        state.mod.nrep = v
-        return v
-    else
-        return 1
-    end
-end
-
 function bit_is_one(byte::UInt8, position::Integer)
     return isone(byte >> (8 - position) & 0x01)
 end
@@ -97,4 +83,12 @@ function is_end_of_cell(state, next_record::UInt8)
     else
         return false
     end
+end
+
+# Looks up a reference number in one of a file's tables of names, with a clear error if the
+# file doesn't define it.
+function lookup_reference(state, table::Dict{UInt64, Symbol}, number::UInt64, kind::String, record::String)
+    name = get(table, number, nothing)
+    isnothing(name) && parse_error(state, "Reference to $kind number $number, which no $record record defines")
+    return name
 end

@@ -101,6 +101,22 @@ end
     @test !any(isloaded, cells(lazy))
 end
 
+@testset "Changing returned lists leaves cells alone" begin
+    # For cells that aren't loaded, `placements` and `layer_counts` return copies. They used to
+    # return the lists kept with the cell, so changing them corrupted what was known about it.
+    oas = lazy_layout()
+    mid, leaf = oas[:MID], oas[:LEAF]
+    count = length(placements(mid))
+    empty!(placements(mid))
+    @test length(placements(mid)) == count
+    counts = layer_counts(leaf)
+    empty!(layer_counts(leaf))
+    @test layer_counts(leaf) == counts
+    @test !isloaded(mid) && !isloaded(leaf)
+    # `index!` returns the cell rather than what is kept with it, for the same reason.
+    @test index!(leaf) === leaf
+end
+
 @testset "Indexes agree with loaded cells" begin
     for filename in readdir(joinpath(@__DIR__, "testdata"))
         filepath = joinpath(@__DIR__, "testdata", filename)

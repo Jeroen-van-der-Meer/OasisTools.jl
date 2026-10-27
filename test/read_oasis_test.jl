@@ -373,6 +373,25 @@ end
     end
 end
 
+# Writes a file with the given file-level records, followed by cells given by their name number
+# and their records.
+function raw_file(records::Vector{UInt8}, cells::Pair{Int, Vector{UInt8}}...)
+    path = tempname()
+    state = OasisTools.WriterState(path, 1 << 16)
+    OasisTools.write_bytes(state, OasisTools.MAGIC_BYTES)
+    OasisTools.write_start(state, 1000.0)
+    OasisTools.write_bytes(state, records)
+    for (number, contents) in cells
+        OasisTools.write_byte(state, 13) # CELL
+        OasisTools.wui(state, number)
+        OasisTools.write_bytes(state, contents)
+    end
+    OasisTools.write_end(state)
+    write(state.io, view(state.buf, 1:(state.pos - 1)))
+    close(state.io)
+    return path
+end
+
 @testset "Malformed input" begin
     # Every one of these used to run off the end of the buffer and read unrelated memory,
     # because the low-level readers were annotated @inbounds.
@@ -409,6 +428,20 @@ end
         write(path, zeros(UInt8, 64))
         @test_throws OasisParseError oasisread(path)
     end
+    @testset "Undefined references" begin
+        # These used to fail with a bare KeyError, rather than saying what was wrong.
+        # A placement of cell name number 7, and a text with text string number 3.
+        @test_throws OasisParseError parse_cell_bytes(UInt8[0x11, 0xf0, 0x07, 0x00, 0x00])
+        @test_throws OasisParseError parse_cell_bytes(UInt8[0x13, 0x7b, 0x03, 0x01, 0x00, 0x00, 0x00])
+        # A cell whose name number no CELLNAME record defines.
+        path = raw_file(
+            UInt8[0x04, 0x03, codeunits("TOP")..., 0x00],             # CELLNAME TOP, number 0
+            0 => UInt8[0x11, 0xf0, 0x07, 0x00, 0x00],                 # Places cell number 7
+            7 => UInt8[0x14, 0x7b, 0x01, 0x00, 0x0a, 0x0a, 0x00, 0x00] # Which has no name
+        )
+        @test_throws OasisParseError oasisread(path)
+        @test_throws OasisParseError oasisread(path; lazy = true)
+    end
     @testset "Error carries a byte offset" begin
         err = try
             parse_cell_bytes(UInt8[0x14, 0x7b, 0x01])
@@ -422,4 +455,31 @@ end
         @test occursin("OasisParseError", s)
         @test occursin("at byte", s)
     end
+end
+
+@testset "Extension records" begin
+    # XNAME, XELEMENT and XGEOMETRY records used to stop the reader. They are now skipped, but an
+    # XGEOMETRY record still sets the modal variables that the records after it may rely on.
+    path = raw_file(
+        UInt8[
+            0x04, 0x03, codeunits("TOP")..., 0x00, # CELLNAME TOP, number 0
+            30, 0x07, 0x03, codeunits("abc")...    # XNAME
+        ],
+        0 => UInt8[
+            32, 0x02, 0x02, codeunits("xy")...,    # XELEMENT
+            # XGEOMETRY on layer 5, datatype 2, at (300, 400).
+            33, 0x1b, 0x01, 0x05, 0x02, 0x03, codeunits("geo")..., 0xd8, 0x04, 0xa0, 0x06,
+            0x14, 0x60, 0x0a, 0x14                 # RECTANGLE of 10 by 20; everything else modal
+        ]
+    )
+    expected = Rect{2, Int64}(Point{2, Int64}(300, 400), Point{2, Int64}(10, 20))
+    for lazy in (false, true)
+        shape = only(shapes(oasisread(path; lazy = lazy)[:TOP]))
+        @test (shape.layer, shape.datatype) == (5, 2)
+        @test shape.shape == expected
+    end
+    # Copying the cell keeps its extension records, so the rectangle comes out the same.
+    copied = tempname()
+    oasiswrite(copied, oasisread(path; lazy = true))
+    @test only(shapes(oasisread(copied)[:TOP])).shape == expected
 end

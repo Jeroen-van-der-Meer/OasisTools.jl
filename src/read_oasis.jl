@@ -26,8 +26,7 @@ TOP
 
 - There *will* be bugs.
 - Properties are not stored.
-- Backwards-compatible extensions are not supported. You will get an error if your file contains
-  any.
+- Extension records (XNAME, XELEMENT and XGEOMETRY) are skipped, with a warning.
 - Curvilinear features are not yet supported.
 """
 function oasisread(filename::AbstractString; lazy::Bool = false)
@@ -53,7 +52,9 @@ function process_cells(state::FileParserState)
 
     for (i, preprocessed_cell) in enumerate(state.cells)
         if preprocessed_cell.nameOrNumber isa UInt64
-            cell_name = state.cellnameReferences[preprocessed_cell.nameOrNumber]
+            cell_name = lookup_reference(
+                state, state.cellnameReferences, preprocessed_cell.nameOrNumber, "cell name", "CELLNAME"
+            )
         else
             cell_name = preprocessed_cell.nameOrNumber
         end

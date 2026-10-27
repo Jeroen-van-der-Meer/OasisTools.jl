@@ -297,3 +297,11 @@ end
     @test OasisTools.CellParserState(source, OasisTools.ContentsSink()).buf === source.bytes
     @test OasisTools.SkipParserState(source.bytes, 1).buf === source.bytes
 end
+
+@testset "Path widths" begin
+    # OASIS stores half of the width of a path, so odd widths can't be written. They used to be
+    # silently rounded down.
+    points = Point{2, Int64}[(0, 0), (10, 0)]
+    @test OasisTools.Path(points, 4).width == 4
+    @test_throws ArgumentError OasisTools.Path(points, 3)
+end

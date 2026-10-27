@@ -118,7 +118,7 @@ function read_placement(state::CellParserState)
         cellname_as_ref = bit_is_one(info_byte, 2)
         if cellname_as_ref
             cellname_number = rui(state)
-            cellname = state.cellnameReferences[cellname_number]
+            cellname = lookup_reference(state, state.cellnameReferences, cellname_number, "cell name", "CELLNAME")
         else
             cellname = read_symbol(state)
         end
@@ -143,7 +143,7 @@ function read_placement_mag_angle(state::CellParserState)
         cellname_as_ref = bit_is_one(info_byte, 2)
         if cellname_as_ref
             cellname_number = rui(state)
-            cellname = state.cellnameReferences[cellname_number]
+            cellname = lookup_reference(state, state.cellnameReferences, cellname_number, "cell name", "CELLNAME")
         else
             cellname = read_symbol(state)
         end
@@ -177,7 +177,7 @@ function read_text(state::CellParserState)
         text_as_ref = bit_is_one(info_byte, 3)
         if text_as_ref
             text_number = rui(state)
-            textstring = state.textstringReferences[text_number]
+            textstring = lookup_reference(state, state.textstringReferences, text_number, "text string", "TEXTSTRING")
         else
             textstring = read_symbol(state)
         end
@@ -537,6 +537,35 @@ function read_property(state::FileParserState)
     push!(state.metadata.fileProperties, file_property)
 end
 
+# The extension records XNAME, XELEMENT and XGEOMETRY hold user-defined data, which the spec
+# allows readers to skip.
+
+function skip_xname(state::FileParserState, explicit_number::Bool)
+    @warn "Skipping XNAME records, which hold extension data that OasisTools doesn't interpret" maxlog = 1
+    skip_integer(state) # xname-attribute
+    skip_string(state) # xname-string
+    explicit_number && skip_integer(state) # reference-number
+end
+
+function read_xelement(state::CellParserState)
+    @warn "Skipping XELEMENT records, which hold extension data that OasisTools doesn't interpret" maxlog = 1
+    skip_xelement(state)
+end
+
+# The geometry itself is left out, but the modal variables it sets have to be kept up to date
+# for the records that follow.
+function read_xgeometry(state::CellParserState)
+    @warn "Skipping XGEOMETRY records, which hold extension geometry that OasisTools doesn't interpret" maxlog = 1
+    info_byte = read_byte(state)
+    skip_integer(state) # xgeometry-attribute
+    read_or_modal(state, rui, Val(:layer), info_byte, 8)
+    read_or_modal(state, rui, Val(:datatype), info_byte, 7)
+    skip_string(state) # xgeometry-string
+    read_or_modal_xy(state, Val(:geometryX), Val(:geometryY), info_byte, 4)
+    read_repetition(state, info_byte, 6)
+    return nothing
+end
+
 function read_cblock(state::AbstractParserState)
     comp_type = rui(state)
     comp_type == 0x00 || parse_error(state, "Unknown CBLOCK compression type $comp_type")
@@ -576,8 +605,8 @@ function read_record(record_type::UInt8, state::FileParserState)
     record_type == 0  && return skip_record(state) # PAD
     record_type == 1  && return read_start(state) # START
     record_type == 2  && return skip_record(state) # END
-    record_type == 30 && parse_error(state, "XNAME records are not supported yet") # XNAME
-    record_type == 31 && parse_error(state, "XNAME records are not supported yet") # XNAME
+    record_type == 30 && return skip_xname(state, false) # XNAME
+    record_type == 31 && return skip_xname(state, true) # XNAME
     parse_error(state, "Unknown file-level record type $record_type")
 end
 
@@ -600,8 +629,8 @@ function read_record(record_type::UInt8, state::CellParserState)
     record_type == 26 && return read_ctrapezoid(state) # CTRAPEZOID
     record_type == 27 && return read_circle(state) # CIRCLE
     record_type == 0  && return skip_record(state) # PAD
-    record_type == 32 && parse_error(state, "XELEMENT records are not supported yet") # XELEMENT
-    record_type == 33 && parse_error(state, "XGEOMETRY records are not supported yet") # XGEOMETRY
+    record_type == 32 && return read_xelement(state) # XELEMENT
+    record_type == 33 && return read_xgeometry(state) # XGEOMETRY
     parse_error(state, "Unknown cell-level record type $record_type")
 end
 
@@ -624,7 +653,7 @@ function read_record(record_type::UInt8, state::SkipParserState)
     record_type == 26 && return skip_ctrapezoid(state) # CTRAPEZOID
     record_type == 27 && return skip_circle(state) # CIRCLE
     record_type == 0  && return skip_record(state) # PAD
-    record_type == 32 && parse_error(state, "XELEMENT records are not supported yet") # XELEMENT
-    record_type == 33 && parse_error(state, "XGEOMETRY records are not supported yet") # XGEOMETRY
+    record_type == 32 && return skip_xelement(state) # XELEMENT
+    record_type == 33 && return skip_xgeometry(state) # XGEOMETRY
     parse_error(state, "Unknown cell-level record type $record_type")
 end

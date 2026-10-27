@@ -172,6 +172,22 @@ function skip_property(state::AbstractParserState)
     end
 end
 
+function skip_xelement(state::AbstractParserState)
+    skip_integer(state) # xelement-attribute
+    skip_string(state) # xelement-string
+end
+
+function skip_xgeometry(state::AbstractParserState)
+    info_byte = read_byte(state)
+    skip_integer(state) # xgeometry-attribute
+    bit_is_one(info_byte, 8) && skip_integer(state)
+    bit_is_one(info_byte, 7) && skip_integer(state)
+    skip_string(state) # xgeometry-string
+    bit_is_one(info_byte, 4) && skip_integer(state)
+    bit_is_one(info_byte, 5) && skip_integer(state)
+    bit_is_one(info_byte, 6) && skip_repetition(state)
+end
+
 function skip_cblock(state::SkipParserState)
     skip_integer(state)
     skip_integer(state)

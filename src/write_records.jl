@@ -259,6 +259,7 @@ function copywrite_text(
 end
 
 function write_shape(state::WriterState, shape::Shape{Polygon{2, Int64}})
+    check_writable(shape)
     info_byte = UInt8(0)
 
     layer_number = shape.layer
@@ -620,6 +621,13 @@ function copywrite_record(
 
     # CBLOCK records also need special attention because they need to be uncompressed.
     record_type == 34 && return copywrite_cblock(state, source, cell_parser_state)
+
+    # PROPERTY records refer to property names and strings by numbers specific to the source
+    # file, whose tables aren't written. They are left out, as they are for decoded cells.
+    if record_type == 28 || record_type == 29
+        read_record(record_type, cell_parser_state)
+        return
+    end
 
     # All remaining records can be copy-pasted.
     record_start = cell_parser_state.pos - 1

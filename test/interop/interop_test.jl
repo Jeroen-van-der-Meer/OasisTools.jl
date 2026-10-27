@@ -35,7 +35,7 @@ const KLAYOUT_FILES = Dict(
     (case, options) => tempname() * ".oas"
     for (case, options) in vcat(
         [(case, options) for case in ("shapes", "hierarchy") for options in KLAYOUT_OPTION_SETS],
-        [(case, String[]) for case in ("empty", "large", "reticle")]
+        [(case, String[]) for case in ("empty", "large", "reticle", "properties")]
     )
 )
 let jobs = [vcat("generate", case, path, options) for ((case, options), path) in KLAYOUT_FILES]
@@ -84,6 +84,9 @@ end
         test_round_trips("$case $(join(options, ' '))", klayout_file(case, options...))
     end
     test_round_trips("empty", klayout_file("empty"))
+    # Copying cells with properties used to produce files that KLayout couldn't read, as the
+    # properties referred to names that weren't written.
+    test_round_trips("properties", klayout_file("properties"))
     # Large enough to be written in several CBLOCKs.
     file = klayout_file("large")
     compare_with_klayout("large, eager", file, written(oasisread(file)))

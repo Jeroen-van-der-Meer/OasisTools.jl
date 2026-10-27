@@ -39,6 +39,29 @@
         @test length(shapes(cell)) == 3
         @test shapes(cell)[3].repetition == rep
     end
+    @testset "Polygons with holes" begin
+        # OASIS polygons can't have holes; they used to be dropped silently when writing.
+        holed = Polygon(
+            Point{2, Int64}[(0, 0), (10, 0), (10, 10), (0, 10)], [Point{2, Int64}[(2, 2), (4, 2), (4, 4)]]
+        )
+        oas = Oasis()
+        add_cell!(oas, :A)
+        @test_throws ArgumentError add_shape!(oas[:A], holed, 1, 0)
+        # Shapes added by other means are caught when writing.
+        push!(oas[:A].shapes, Shape(holed, UInt64(1), UInt64(0), nothing))
+        @test_throws ArgumentError oasiswrite(tempname(), oas)
+    end
+    @testset "Looking up cells" begin
+        oas = Oasis()
+        add_cell!(oas, :A)
+        @test name(oas[:A]) == :A
+        @test name(oas["A"]) == :A
+        @test_throws KeyError oas[:B]
+        @test haskey(oas, :A)
+        @test !haskey(oas, :B)
+        @test isnothing(get(oas, :B, nothing))
+        @test name(get(oas, "A", nothing)) == :A
+    end
     @testset "Add placements" begin
         oas = Oasis()
         add_cell!(oas, :TOP)
