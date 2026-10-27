@@ -83,10 +83,10 @@ function is_end_of_cell(state, next_record::UInt8)
         # If a CBLOCK is encountered, the first record within the CBLOCK implies whether or
         # not the CBLOCK belongs to the cell or not.
         comp_type = read_byte(state)
-        @assert comp_type == 0x00 "Unknown compression type encountered"
+        comp_type == 0x00 || parse_error(state, "Unknown CBLOCK compression type $comp_type")
         skip_integer(state) # uncomp_byte_count
         comp_byte_count = rui(state)
-        comp_bytes = @view state.buf[state.pos:(state.pos + comp_byte_count - 1)]
+        comp_bytes = view_bytes(state, comp_byte_count)
         z = DeflateDecompressorStream(IOBuffer(comp_bytes))
         first_record_in_cblock = try
             read(z, UInt8)

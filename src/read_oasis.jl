@@ -33,7 +33,7 @@ function oasisread(filename::AbstractString; lazy::Bool = false)
     buf = mmap(filename)
     state = FileParserState(buf)
     header = read_bytes(state, 13)
-    @assert all(header .== MAGIC_BYTES) "Wrong header bytes; likely not an OASIS file."
+    all(header .== MAGIC_BYTES) || parse_error(state, "Wrong header bytes; likely not an OASIS file")
 
     while true
         record_type = read_byte(state)

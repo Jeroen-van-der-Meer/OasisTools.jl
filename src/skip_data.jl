@@ -13,9 +13,9 @@ end
 
 skip_ratio(state) = skip_integers(state, 2)
 
-skip_four_byte_float(state) = state.pos += 4
+skip_four_byte_float(state) = skip_bytes(state, 4)
 
-skip_eight_byte_float(state) = state.pos += 8
+skip_eight_byte_float(state) = skip_bytes(state, 8)
 
 function skip_real(state, format::UInt8)
     if format <= 0x03
@@ -33,7 +33,7 @@ skip_real(state) = skip_real(state, read_byte(state))
 
 function skip_string(state)
     length = rui(state)
-    state.pos += length
+    skip_bytes(state, length)
 end
 
 function skip_g_delta(state)
@@ -93,7 +93,7 @@ function skip_repetition(state)
     type == 5  && return skip_repetition_type_5(state)
     type == 6  && return skip_repetition_type_6(state)
     type == 7  && return skip_repetition_type_7(state)
-    error("Unknown repetition type; file may be corrupted")
+    parse_error(state, "Unknown repetition type $type")
 end
 
 function skip_point_list(state)
@@ -107,9 +107,10 @@ function skip_point_list(state)
 end
 
 function skip_byte(state)
-    state.pos += 1
+    skip_bytes(state, 1)
 end
 
 function skip_bytes(state, nbytes::Integer)
+    check_remaining(state, nbytes)
     state.pos += nbytes
 end

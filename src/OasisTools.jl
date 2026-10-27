@@ -27,6 +27,7 @@ export merge_oases!
 export name
 export Oasis
 export oasisread
+export OasisParseError
 export oasiswrite
 export placements
 export plot_cell

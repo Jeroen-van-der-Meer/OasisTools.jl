@@ -1,3 +1,26 @@
+"""
+    OasisParseError(message, position)
+
+Thrown when the contents of an OASIS file cannot be interpreted.
+
+# Properties
+
+- `message::String`: Description of what went wrong.
+- `position::Int64`: Byte offset at which parsing stopped. This is an offset into the file
+  itself, unless the error occurred while parsing a [`LazyCell`](@ref) or the contents of a
+  CBLOCK, in which case it is relative to the start of that buffer.
+"""
+struct OasisParseError <: Exception
+    message::String
+    position::Int64
+end
+
+function Base.showerror(io::IO, e::OasisParseError)
+    print(io, "OasisParseError: ", e.message, " (at byte ", e.position, ")")
+end
+
+parse_error(state, message::AbstractString) = throw(OasisParseError(message, state.pos))
+
 abstract type AbstractParserState end
 
 mutable struct FileParserState <: AbstractParserState

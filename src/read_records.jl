@@ -471,6 +471,7 @@ function read_ctrapezoid(state::CellParserState)
     repetition = read_repetition(state, info_byte, 6)
 
     vertices = ctrapezoid_vertices(width, height, ctrapezoid_type)
+    isnothing(vertices) && parse_error(state, "Unknown ctrapezoid type $ctrapezoid_type")
     vertices .+= Point{2, Int64}(x, y)
     if ctrapezoid_type <= 0x0f
         ctrapezoid = Polygon(vertices)
@@ -528,7 +529,7 @@ end
 
 function read_cblock(state::AbstractParserState)
     comp_type = rui(state)
-    @assert comp_type == 0x00 "Unknown compression type encountered"
+    comp_type == 0x00 || parse_error(state, "Unknown CBLOCK compression type $comp_type")
     uncomp_byte_count = rui(state)
     comp_byte_count = rui(state)
 
@@ -565,9 +566,9 @@ function read_record(record_type::UInt8, state::FileParserState)
     record_type == 0  && return skip_record(state) # PAD
     record_type == 1  && return read_start(state) # START
     record_type == 2  && return skip_record(state) # END
-    record_type == 30 && error("XNAME record encountered; not implemented yet") # XNAME
-    record_type == 31 && error("XNAME record encountered; not implemented yet") # XNAME
-    error("No suitable record type found; file may be corrupted")
+    record_type == 30 && parse_error(state, "XNAME records are not supported yet") # XNAME
+    record_type == 31 && parse_error(state, "XNAME records are not supported yet") # XNAME
+    parse_error(state, "Unknown file-level record type $record_type")
 end
 
 function read_record(record_type::UInt8, state::CellParserState)
@@ -589,9 +590,9 @@ function read_record(record_type::UInt8, state::CellParserState)
     record_type == 26 && return read_ctrapezoid(state) # CTRAPEZOID
     record_type == 27 && return read_circle(state) # CIRCLE
     record_type == 0  && return skip_record(state) # PAD
-    record_type == 32 && error("XELEMENT record encountered; not implemented yet") # XELEMENT
-    record_type == 33 && error("XGEOMETRY record encountered; not implemented yet") # XGEOMETRY
-    error("No suitable record type found; file may be corrupted")
+    record_type == 32 && parse_error(state, "XELEMENT records are not supported yet") # XELEMENT
+    record_type == 33 && parse_error(state, "XGEOMETRY records are not supported yet") # XGEOMETRY
+    parse_error(state, "Unknown cell-level record type $record_type")
 end
 
 function read_record(record_type::UInt8, state::LazyCellParserState)
@@ -613,7 +614,7 @@ function read_record(record_type::UInt8, state::LazyCellParserState)
     record_type == 26 && return skip_ctrapezoid(state) # CTRAPEZOID
     record_type == 27 && return skip_circle(state) # CIRCLE
     record_type == 0  && return skip_record(state) # PAD
-    record_type == 32 && error("XELEMENT record encountered; not implemented yet") # XELEMENT
-    record_type == 33 && error("XGEOMETRY record encountered; not implemented yet") # XGEOMETRY
-    error("No suitable record type found; file may be corrupted")
+    record_type == 32 && parse_error(state, "XELEMENT records are not supported yet") # XELEMENT
+    record_type == 33 && parse_error(state, "XGEOMETRY records are not supported yet") # XGEOMETRY
+    parse_error(state, "Unknown cell-level record type $record_type")
 end

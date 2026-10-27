@@ -4,6 +4,7 @@
 
 - Layer filtering API.
 - Expanded OASIS editing API.
+- More transparent errors.
 
 ## v0.2.0
 

@@ -39,7 +39,7 @@ function read_real(state, format::UInt8)
     format == 5 && return read_negative_ratio(state)
     format == 6 && return read_four_byte_float(state)
     format == 7 && return read_eight_byte_float(state)
-    error("Unknown real format; file may be corrupted")
+    parse_error(state, "Unknown real format $format")
 end
 
 function read_real(state)
@@ -83,7 +83,7 @@ function read_delta(dir::UInt64, magnitude::UInt64)
     dir == 5 && return northwest_integer(magnitude)
     dir == 6 && return southwest_integer(magnitude)
     dir == 7 && return southeast_integer(magnitude)
-    error("Unknown delta direction; file may be corrupted")
+    throw(OasisParseError("Unknown delta direction $dir", 0))
 end
 
 function read_2_delta(Δ::UInt64)
@@ -173,7 +173,7 @@ function read_repetition(state::CellParserState)
     type == 5  && return read_repetition_type_5(state)
     type == 6  && return read_repetition_type_6(state)
     type == 7  && return read_repetition_type_7(state)
-    error("Unknown repetition type; file may be corrupted")
+    parse_error(state, "Unknown repetition type $type")
 end
 
 read_nrep_type_0(state) = state.mod.nrep
@@ -239,7 +239,7 @@ function read_nrep(state)
     type == 5  && return read_nrep_type_5(state)
     type == 6  && return read_nrep_type_6(state)
     type == 7  && return read_nrep_type_7(state)
-    error("Unknown repetition type; file may be corrupted")
+    parse_error(state, "Unknown repetition type $type")
 end
 
 function read_1_delta_list_horizontal_first(state, vc::UInt64)
@@ -300,6 +300,7 @@ function read_point_list(state)
     type == 0x02 && return read_2_delta_list(state, vertex_count)
     type == 0x03 && return read_3_delta_list(state, vertex_count)
     type == 0x05 && return cumsum(read_g_delta_list(state, vertex_count))
+    parse_error(state, "Unknown point list type $type")
 end
 
 function read_property_value(state)
@@ -329,22 +330,32 @@ function read_interval(state)
     type == 1 && return read_interval_type_1(state)
     type == 2 && return read_interval_type_2(state)
     type == 4 && return read_interval_type_4(state)
-    error("Unknown interval type; file may be corrupted")
+    parse_error(state, "Unknown interval type $type")
 end
 
 function read_byte(state)
+    state.pos > length(state.buf) && parse_error(state, "Unexpected end of input")
     @inbounds b = state.buf[state.pos]
     state.pos += 1
     return b
 end
 
+# Comparing against the bytes that remain rather than against `pos + nbytes` keeps the check
+# correct when a corrupt file yields an absurdly large `nbytes`.
+function check_remaining(state, nbytes::Integer)
+    nbytes > length(state.buf) - state.pos + 1 &&
+        parse_error(state, "Unexpected end of input; expected $nbytes more byte(s)")
+end
+
 function read_bytes(state, nbytes::Integer)
+    check_remaining(state, nbytes)
     @inbounds b = state.buf[state.pos:(state.pos + nbytes - 1)]
     state.pos += nbytes
     return b
 end
 
 function view_bytes(state, nbytes::Integer)
+    check_remaining(state, nbytes)
     @inbounds b = @view state.buf[state.pos:(state.pos + nbytes - 1)]
     state.pos += nbytes
     return b

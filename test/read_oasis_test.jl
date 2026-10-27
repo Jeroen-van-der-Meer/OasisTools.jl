@@ -1,3 +1,13 @@
+function parse_cell_bytes(bytes)
+    state = CellParserState(bytes)
+    nbytes = length(bytes)
+    while state.pos <= nbytes
+        record_type = OasisTools.read_byte(state)
+        OasisTools.read_record(record_type, state)
+    end
+    return state
+end
+
 @testset "Parse OASIS files" begin
     @testset "Polygon" begin
         # Contains: Polygon with four vertices.
@@ -320,16 +330,6 @@ end
 @testset "Modal point lists" begin
     # A record that omits its point list reuses the modal one. The modal point list holds
     # deltas, so it must survive the conversion to absolute coordinates unscathed.
-    function parse_cell_bytes(bytes)
-        state = CellParserState(bytes)
-        nbytes = length(bytes)
-        while state.pos <= nbytes
-            record_type = OasisTools.read_byte(state)
-            OasisTools.read_record(record_type, state)
-        end
-        return state
-    end
-
     @testset "Polygon" begin
         state = parse_cell_bytes(UInt8[
             0x15, 0x3b,             # POLYGON; layer, datatype, point list, x and y explicit
@@ -370,5 +370,62 @@ end
         ]
         @test state.shapes[1].shape.width == 10
         @test state.shapes[2].shape.width == 10
+    end
+end
+
+@testset "Malformed input" begin
+    # Every one of these used to run off the end of the buffer and read unrelated memory,
+    # because the low-level readers were annotated @inbounds.
+    @testset "Truncated records" begin
+        # RECTANGLE claiming a layer, datatype, width, height, x and y, but the record stops
+        # after the layer.
+        @test_throws OasisParseError parse_cell_bytes(UInt8[0x14, 0x7b, 0x01])
+
+        # Unterminated variable-length integer: every byte has its continuation bit set.
+        @test_throws OasisParseError OasisTools.rui(CellParserState(UInt8[0x80, 0x80, 0x80]))
+
+        # A string whose declared length runs past the end of the buffer.
+        @test_throws OasisParseError OasisTools.read_string(
+            CellParserState(UInt8[0x7f, 0x61, 0x62])
+        )
+        @test_throws OasisParseError OasisTools.skip_string(
+            CellParserState(UInt8[0x7f, 0x61, 0x62])
+        )
+
+        # A point list declaring more vertices than there are bytes left.
+        @test_throws OasisParseError OasisTools.read_point_list(
+            CellParserState(UInt8[0x04, 0x7f, 0x02])
+        )
+    end
+    @testset "Unknown type tags" begin
+        @test_throws OasisParseError OasisTools.read_real(CellParserState(UInt8[0x08]))
+        @test_throws OasisParseError OasisTools.read_interval(CellParserState(UInt8[0x05]))
+        @test_throws OasisParseError OasisTools.read_point_list(CellParserState(UInt8[0x06, 0x01]))
+        @test_throws OasisParseError OasisTools.read_repetition(CellParserState(UInt8[0x0c]))
+        @test_throws OasisParseError parse_cell_bytes(UInt8[0x63])
+    end
+    @testset "Not an OASIS file" begin
+        path, io = mktemp()
+        write(io, zeros(UInt8, 64))
+        close(io)
+        @test_throws OasisParseError oasisread(path)
+        GC.gc()
+        try
+            rm(path; force = true)
+        catch
+        end
+    end
+    @testset "Error carries a byte offset" begin
+        err = try
+            parse_cell_bytes(UInt8[0x14, 0x7b, 0x01])
+            nothing
+        catch e
+            e
+        end
+        @test err isa OasisParseError
+        @test err.position > 0
+        s = sprint(showerror, err)
+        @test occursin("OasisParseError", s)
+        @test occursin("at byte", s)
     end
 end
