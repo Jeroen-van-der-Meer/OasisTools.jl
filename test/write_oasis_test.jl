@@ -363,6 +363,16 @@ end
     oasiswrite(path, oas) # So that compilation doesn't count
     @test @allocated(oasiswrite(path, oas)) < 50 * 2^20
     @test length(cells(oasisread(path))) == 1000
+
+    # Every cell is now in a CBLOCK of its own. Setting up a new decompressor for every CBLOCK
+    # used to allocate over 70 KiB each, both when opening the file and when indexing it.
+    index!(oasisread(path; lazy = true))
+    @test @allocated(oasisread(path; lazy = true)) < 20 * 2^20
+    @test @allocated(index!(oasisread(path; lazy = true))) < 40 * 2^20
+
+    # Each task decompresses with a decompressor of its own.
+    tasks = [Threads.@spawn index!(oasisread(path; lazy = true)) for _ in 1:4]
+    @test all(oas -> all(c -> tier(c) == 1, cells(oas)), fetch.(tasks))
 end
 
 @testset "Write Cells with shapes" begin

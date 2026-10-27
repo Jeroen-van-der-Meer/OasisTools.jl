@@ -213,7 +213,7 @@ function compressor(state::WriterState)
     c = state.compressor[]
     if isnothing(c)
         c = DeflateCompressor()
-        CodecZlib.TranscodingStreams.initialize(c)
+        TranscodingStreams.initialize(c)
         state.compressor[] = c
     end
     return c
@@ -222,7 +222,7 @@ end
 function finish_compression!(state::WriterState)
     c = state.compressor[]
     isnothing(c) && return
-    CodecZlib.TranscodingStreams.finalize(c)
+    TranscodingStreams.finalize(c)
     state.compressor[] = nothing
 end
 

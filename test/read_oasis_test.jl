@@ -442,6 +442,18 @@ end
         @test_throws OasisParseError oasisread(path)
         @test_throws OasisParseError oasisread(path; lazy = true)
     end
+    @testset "CBLOCKs that don't decompress properly" begin
+        # A CBLOCK holding a single rectangle, declaring a given uncompressed size.
+        rectangle = UInt8[0x14, 0x7b, 0x01, 0x00, 0x0a, 0x0a, 0x00, 0x00]
+        compressed = transcode(OasisTools.CodecZlib.DeflateCompressor, rectangle)
+        cblock(declared) = vcat(UInt8[0x22, 0x00, declared, length(compressed)], compressed)
+        @test length(parse_cell_bytes(cblock(length(rectangle))).sink.shapes) == 1
+        # The spec treats CBLOCKs decompressing to more or fewer bytes than declared as errors.
+        @test_throws OasisParseError parse_cell_bytes(cblock(length(rectangle) + 1))
+        @test_throws OasisParseError parse_cell_bytes(cblock(length(rectangle) - 1))
+        # Data that isn't compressed at all.
+        @test_throws OasisParseError parse_cell_bytes(UInt8[0x22, 0x00, 0x08, 0x04, 0xff, 0xff, 0xff, 0xff])
+    end
     @testset "Error carries a byte offset" begin
         err = try
             parse_cell_bytes(UInt8[0x14, 0x7b, 0x01])

@@ -8,7 +8,7 @@ The entry point for reading is [`oasisread`](@ref), which returns an [`Oasis`](@
 
 2. **Sequential record parsing.** A `FileParserState` walks through the memory-mapped buffer one record at a time. It reads a record-type byte and dispatches to the corresponding handler function. File-level records (CELLNAME, LAYERNAME, PROPNAME, etc.) populate the parser state's reference dictionaries and layer list. Since records are variable-length, the parser must visit every record in sequence; it cannot skip ahead without reading each record's header and payload size.
 
-3. **Cell collection.** When the parser encounters a CELL record, it does *not* decode the cell's geometry. Instead, a `SkipParserState` takes over and *skips* through the cell's body record by record, advancing the byte position without interpreting the payload. Compressed blocks inside the cell are skipped without being decompressed. The parser records the cell's name (or numeric reference) and the byte range that the cell body spans. This produces a `PreprocessedCell` — a name and a view into the memory-mapped buffer.
+3. **Cell collection.** When the parser encounters a CELL record, it does *not* decode the cell's geometry. Instead, a `SkipParserState` takes over and *skips* through the cell's body record by record, advancing the byte position without interpreting the payload. Of compressed blocks inside the cell, only the first byte is decompressed, to tell whether the block still belongs to the cell. The parser records the cell's name (or numeric reference) and the byte range that the cell body spans. This produces a `PreprocessedCell` — a name and a view into the memory-mapped buffer.
 
 4. **Post-processing.** After reaching the END record, `process_cells` converts each `PreprocessedCell` into a [`Cell`](@ref) that isn't loaded, by resolving any numeric name references. Its [`CellSource`](@ref OasisTools.CellSource) holds the byte range along with the file-level reference dictionaries that are needed to later decode the cell's contents.
 
@@ -16,7 +16,7 @@ The entry point for reading is [`oasisread`](@ref), which returns an [`Oasis`](@
 
 ### Compressed blocks
 
-If the parser encounters a CBLOCK record at any point, it reads the compressed payload, decompresses it with DEFLATE into a temporary buffer, and recursively parses the contained records using a fresh parser state. The decompressed records are handled identically to uncompressed ones; CBLOCKs are transparent to the rest of the parsing logic.
+If the parser encounters a CBLOCK record at any point, it reads the compressed payload, decompresses it with DEFLATE into a temporary buffer, and recursively parses the contained records using a fresh parser state. Setting up a decompressor takes much longer than decompressing a typical CBLOCK, so each task keeps one and reuses it; decompressors can't be shared between tasks, which decode cells in parallel. The decompressed records are handled identically to uncompressed ones; CBLOCKs are transparent to the rest of the parsing logic.
 
 ### Modal variables
 

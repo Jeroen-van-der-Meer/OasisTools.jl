@@ -573,10 +573,7 @@ function read_cblock(state::AbstractParserState)
     comp_byte_count = rui(state)
 
     comp_bytes = view_bytes(state, comp_byte_count)
-    z = DeflateDecompressorStream(IOBuffer(comp_bytes))
-    buf_decompress = Vector{UInt8}(undef, uncomp_byte_count)
-    read!(z, buf_decompress)
-    close(z)
+    buf_decompress = decompress_cblock(state, comp_bytes, uncomp_byte_count)
 
     state_decomp = new_state(state, buf_decompress)
     while state_decomp.pos <= uncomp_byte_count

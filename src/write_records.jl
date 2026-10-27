@@ -594,10 +594,7 @@ function copywrite_cblock(
     comp_byte_count = rui(cell_parser_state)
 
     comp_bytes = view_bytes(cell_parser_state, comp_byte_count)
-    z = DeflateDecompressorStream(IOBuffer(comp_bytes))
-    buf_decompress = Vector{UInt8}(undef, uncomp_byte_count)
-    read!(z, buf_decompress)
-    close(z)
+    buf_decompress = decompress_cblock(cell_parser_state, comp_bytes, uncomp_byte_count)
 
     cell_parser_decomp = new_state(cell_parser_state, buf_decompress)
     while cell_parser_decomp.pos <= uncomp_byte_count
