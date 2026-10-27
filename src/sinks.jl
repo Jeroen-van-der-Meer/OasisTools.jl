@@ -99,8 +99,9 @@ function decode_cell(sink, cell::Cell)
     elseif isempty(cell.edits)
         decode_source(sink, cell.source)
     else
+        # A cell without a source consists of its edits alone.
         edited = EditedSink(sink, cell.edits)
-        decode_source(edited, cell.source)
+        isnothing(cell.source) || decode_source(edited, cell.source)
         finish_edits(edited)
     end
     return sink

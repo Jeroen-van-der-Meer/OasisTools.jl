@@ -159,6 +159,42 @@ with_repetition(s::Shape, rep) = Shape(s.shape, s.layer, s.datatype, rep)
 with_repetition(p::CellPlacement, rep) =
     CellPlacement(p.cell, p.location, p.rotation, p.magnification, p.flipped, rep)
 
+# Moving a shape out of a placed cell into the cell that places it, i.e. applying placement `p`
+# to it. Repetitions combine with those of the placement. Rotations by multiples of 90 degrees
+# keep rectangles rectangles; other angles turn them into polygons.
+function transform_shape(s::Shape, p::CellPlacement)
+    geometry = transform_geometry(s.shape, p)
+    rep = _minkowski_repetition(
+        p.repetition, _transform_repetition(s.repetition, p.rotation, p.magnification, p.flipped)
+    )
+    return with_repetition(Shape(geometry, s.layer, s.datatype, nothing), rep)
+end
+
+transform_point(x::Point{2, Int64}, p::CellPlacement) =
+    _transform_point(x, p.rotation, p.magnification, p.flipped) + p.location
+
+function transform_geometry(r::Rect{2, Int64}, p::CellPlacement)
+    lo, hi = box_lo(r), box_hi(r)
+    corners = (lo, Point{2, Int64}(hi[1], lo[2]), hi, Point{2, Int64}(lo[1], hi[2]))
+    transformed = [transform_point(c, p) for c in corners]
+    iszero(mod(p.rotation, 90)) || return Polygon(transformed)
+    return points_box(transformed)
+end
+
+transform_geometry(g::Polygon{2, Int64}, p::CellPlacement) =
+    Polygon([transform_point(x, p) for x in g.exterior])
+transform_geometry(t::Triangle{2, Int64}, p::CellPlacement) =
+    Triangle{2, Int64}(transform_point(t[1], p), transform_point(t[2], p), transform_point(t[3], p))
+transform_geometry(c::Circle{Int64}, p::CellPlacement) =
+    Circle{Int64}(transform_point(c.center, p), round(Int64, c.r * p.magnification, RoundNearestTiesAway))
+transform_geometry(t::Text, p::CellPlacement) = Text(t.text, transform_point(t.location, p), nothing)
+
+# Path widths must stay even, so the half-width is scaled and rounded.
+transform_geometry(g::Path{2, Int64}, p::CellPlacement) = Path(
+    [transform_point(x, p) for x in g.points],
+    2 * round(Int64, g.width ÷ 2 * p.magnification, RoundNearestTiesAway)
+)
+
 # Recombines the instances of `element` (a shape or placement without repetition) at the given
 # offsets into as few elements as possible.
 function regroup(emit, element, offsets::Vector{Point{2, Int64}})

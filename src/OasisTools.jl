@@ -16,6 +16,7 @@ export crop
 export expand
 export filter_shapes!
 export find_instances
+export flatten
 export extent
 export foreach_shape
 export index!
@@ -70,6 +71,7 @@ include("cells.jl")
 # Editing
 include("mutate.jl")
 include("crop.jl")
+include("flatten.jl")
 
 # Cell hierarchy
 include("hierarchy.jl")

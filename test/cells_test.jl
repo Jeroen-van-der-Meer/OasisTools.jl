@@ -8,7 +8,7 @@ placement_fields(p) = (
 
 # Everything below `cell_name` as polygons in its coordinates, with all repetitions and
 # placements expanded. Only handles rectangles and polygons.
-function flatten(oas, cell_name, transform = nothing, out = Vector{Point{2, Int64}}[])
+function flat_polygons(oas, cell_name, transform = nothing, out = Vector{Point{2, Int64}}[])
     transform = something(transform, CellPlacement(cell_name, Point{2, Int64}(0, 0), 0.0, 1.0, false, nothing))
     to_top(p) = OasisTools._transform_point(
         p, transform.rotation, transform.magnification, transform.flipped
@@ -27,7 +27,7 @@ function flatten(oas, cell_name, transform = nothing, out = Vector{Point{2, Int6
         end
     end
     for p in placements(oas[cell_name]), q in expand(p)
-        flatten(oas, q.cell, transform * q, out)
+        flat_polygons(oas, q.cell, transform * q, out)
     end
     return out
 end
@@ -138,7 +138,7 @@ end
     @test extent(oas[:LEAF]) == box(0, 0, 46, 8)
     @test extent(oas[:TOP]) == box(-50, -50, 950, 10)
     # The hierarchical extent covers all flattened geometry, and nothing more.
-    polygons = flatten(oas, :TOP)
+    polygons = flat_polygons(oas, :TOP)
     @test extent(oas, :TOP) == OasisTools.points_box(Iterators.flatten(polygons))
     @test extent(lazy_layout(), :TOP) == extent(oas, :TOP)
 end
@@ -212,10 +212,10 @@ end
     ]
     for window in windows
         expected = total_area(
-            filter(p -> length(p) >= 3, [OasisTools.clip_polygon(p, window) for p in flatten(original, :TOP)])
+            filter(p -> length(p) >= 3, [OasisTools.clip_polygon(p, window) for p in flat_polygons(original, :TOP)])
         )
         cropped = crop(original, :TOP, window)
-        @test total_area(flatten(cropped, :TOP)) == expected
+        @test total_area(flat_polygons(cropped, :TOP)) == expected
         @test roots(cropped) == [:TOP]
         cropped_extent = extent(cropped, :TOP)
         @test isnothing(cropped_extent) || OasisTools.contains_box(window, cropped_extent)
@@ -225,9 +225,46 @@ end
         @test !any(isloaded, cells(cropped_lazy))
         path = tempname()
         oasiswrite(path, cropped_lazy)
-        @test total_area(flatten(oasisread(path), :TOP)) == expected
+        @test total_area(flat_polygons(oasisread(path), :TOP)) == expected
     end
     # The original layout is left untouched.
-    @test total_area(flatten(original, :TOP)) == total_area(flatten(build_layout(), :TOP))
+    @test total_area(flat_polygons(original, :TOP)) == total_area(flat_polygons(build_layout(), :TOP))
     @test cell_names(crop(original, :TOP, box(-1000, -1000, 3000, 3000))) == [:LEAF, :MID, :TOP]
+end
+
+@testset "Flattening" begin
+    original = build_layout()
+    expected = total_area(flat_polygons(original, :TOP))
+    for layout in (original, lazy_layout()), depth in (0, 1, 2, typemax(Int))
+        # The geometry stays as it was, also after writing.
+        flat = flatten(layout, :TOP; depth = depth)
+        @test total_area(flat_polygons(flat, :TOP)) == expected
+        path = tempname()
+        oasiswrite(path, flat)
+        @test total_area(flat_polygons(oasisread(path), :TOP)) == expected
+    end
+
+    # What remains placed after flattening to each depth.
+    placed(oas) = sort(unique(p.cell for p in placements(oas[:TOP])))
+    @test placed(flatten(original, :TOP; depth = 0)) == [:MID]
+    @test placed(flatten(original, :TOP; depth = 1)) == [:LEAF]
+    @test isempty(placed(flatten(original, :TOP)))
+    @test sort(cell_names(flatten(original, :TOP; depth = 1))) == [:LEAF, :TOP]
+    @test cell_names(flatten(original, :TOP)) == [:TOP]
+
+    # Arrays stay arrays, rather than being expanded into separate shapes.
+    counts = values(layer_counts(flatten(original, :TOP)[:TOP]))
+    @test sum(c -> c.records, counts) < sum(c -> c.instances, counts)
+
+    # The original layout is left untouched, and nothing gets loaded.
+    lazy = lazy_layout()
+    flatten(lazy, :TOP)
+    @test !any(isloaded, cells(lazy))
+    @test placed(original) == [:MID]
+
+    @test_throws ArgumentError flatten(original, :TOP; depth = -1)
+    cyclic = Oasis()
+    add_cell!(cyclic, :A)
+    add_placement!(cyclic[:A], :A, Point{2, Int64}(0, 0))
+    @test_throws ErrorException flatten(cyclic, :A)
 end

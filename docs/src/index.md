@@ -71,6 +71,18 @@ open("nand2.csv", "w") do io
 end
 ```
 
+### Flattening
+
+[`flatten`](@ref) moves the shapes of placed cells into the cell that places them, either completely or down to a given depth.
+
+```julia
+using OasisTools
+
+oas = oasisread("chip.oas"; lazy = true)
+oasiswrite("chip_flat.oas", flatten(oas, :TOP))                   # A single cell, without placements
+oasiswrite("chip_flat_2.oas", flatten(oas, :TOP; depth = 2))      # Two levels flattened
+```
+
 ### Extracting a single layer
 
 [`filter_shapes!`](@ref) keeps only the shapes you ask for. The cell hierarchy stays as it is, so cells without any shapes on the layer end up empty.

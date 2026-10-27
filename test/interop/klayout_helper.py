@@ -6,12 +6,13 @@ KLayout as an independent reference for the OasisTools test suite.
         std_properties (all integers).
 
     compare REFERENCE CANDIDATE [--window X0 Y0 X1 Y1] [--ignore L/D ...] [--drop L/D ...]
-                                [--no-structure]
+                                [--no-structure] [--top CELL]
         Read both files with KLayout and compare them: per layer, the flattened geometry (by XOR)
         and the texts, and unless --no-structure, the cells and how often each cell places each
         other cell. With --window, REFERENCE is clipped to the window first. Layers given with
         --ignore are skipped; layers given with --drop are expected to be absent from CANDIDATE.
-        Warnings from KLayout's reader count as problems.
+        With --top, only that top cell is compared, rather than all of them. Warnings from
+        KLayout's reader count as problems.
 
     batch FILE
         Run the commands in FILE, one per line with tab-separated arguments, in this process.
@@ -58,13 +59,14 @@ def layer_key(text):
     return int(layer), int(datatype)
 
 
-def flattened(layout):
-    """Per (layer, datatype): the flattened geometry and texts of all top cells."""
+def flattened(layout, top_name=None):
+    """Per (layer, datatype): the flattened geometry and texts of all top cells, or of one."""
+    tops = layout.top_cells() if top_name is None else [layout.cell(top_name)]
     result = {}
     for index in layout.layer_indexes():
         info = layout.get_info(index)
         region, texts = db.Region(), []
-        for top in layout.top_cells():
+        for top in tops:
             # Texts are compared on their own; as part of a region they'd become polygons of
             # zero area.
             shapes = top.begin_shapes_rec(index)
@@ -89,7 +91,7 @@ def structure(layout):
 
 def compare(args):
     reference_path, candidate_path = args[0], args[1]
-    window, ignored, dropped, check_structure = None, set(), set(), True
+    window, ignored, dropped, check_structure, top_name = None, set(), set(), True, None
     rest = args[2:]
     while rest:
         flag = rest.pop(0)
@@ -102,6 +104,8 @@ def compare(args):
             dropped.add(layer_key(rest.pop(0)))
         elif flag == "--no-structure":
             check_structure = False
+        elif flag == "--top":
+            top_name = rest.pop(0)
         else:
             raise ValueError(f"Unknown option {flag}")
 
@@ -120,7 +124,7 @@ def compare(args):
     if reference.dbu != candidate.dbu:
         problem(f"Database units differ: {reference.dbu} vs {candidate.dbu}")
 
-    ref_layers, cand_layers = flattened(reference), flattened(candidate)
+    ref_layers, cand_layers = flattened(reference, top_name), flattened(candidate, top_name)
     empty = (db.Region(), [])
     for key in sorted(set(ref_layers) | set(cand_layers)):
         if key in ignored:

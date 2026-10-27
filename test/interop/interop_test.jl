@@ -141,6 +141,21 @@ end
     end
 end
 
+@testset "Flattening agrees with KLayout" begin
+    # Flattening must leave the geometry exactly as it was, including that of cells placed at odd
+    # angles, magnified, or mirrored.
+    for (case, depths) in (("reticle", (1, 2, 3)), ("hierarchy", (1, 2)))
+        file = klayout_file(case)
+        for lazy in (false, true), depth in (depths..., typemax(Int))
+            flat = flatten(oasisread(file; lazy = lazy), :TOP; depth = depth)
+            compare_with_klayout(
+                "Flattening $case, lazy = $lazy, depth = $depth", file, written(flat),
+                "--top", "TOP", "--no-structure"
+            )
+        end
+    end
+end
+
 @testset "Rotations in any range" begin
     # Rotations outside of [0, 360) used to corrupt the output or fail to write.
     function placed(rotation, flipped, magnification)

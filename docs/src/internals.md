@@ -81,6 +81,10 @@ Changes to a cell that isn't loaded are recorded as *edits*, rather than loading
 
 [`crop`](@ref) uses hierarchical bounding boxes ([`extent`](@ref)) to sort every placement into one of three groups: entirely inside the window (kept as it is), entirely outside (dropped), or crossing its edge. Cells crossing the edge are replaced by cropped copies, which for cells that aren't loaded consist of the original bytes plus edits that clip the shapes and replace the placements. Nothing is loaded in the process.
 
+### Flattening
+
+[`flatten`](@ref) works similarly. The flattened cell is a copy of the original plus one edit, which replaces each placement by the contents of the placed cell, transformed into the coordinates of the flattened cell, recursing as deep as asked. That happens whenever the cell is decoded, so even a flattened layout far too large for memory can be written, one placed cell at a time. Placements and shapes keep their repetitions, combined where possible, so that arrays stay arrays. The shapes of small cells are kept once decoded, so that cells placed many times are only decoded once.
+
 ### Root cells
 
 Root cells are those that are not placed inside any other cell. [`roots`](@ref) works them out from the placements of all cells, bringing cells that aren't loaded to tier 1 to find them, so the answer always reflects any edits made since.
