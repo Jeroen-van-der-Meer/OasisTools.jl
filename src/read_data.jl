@@ -264,15 +264,12 @@ end
 
 function read_property_value(state)
     type = read_byte(state)
-    if type <= 0x07
-        return read_real(state, type)
-    elseif type == 0x09
-        return read_signed_integer(state)
-    elseif 0x0a <= type <= 0x0c
-        return read_symbol(state)
-    else
-        return rui(state)
-    end
+    type <= 0x07 && return read_real(state, type)
+    type == 0x08 && return rui(state)
+    type == 0x09 && return read_signed_integer(state)
+    type <= 0x0c && return read_string(state) # a-, b- and n-strings
+    type <= 0x0f && return PropStringReference(rui(state))
+    parse_error(state, "Unknown property value type $type")
 end
 
 read_interval_type_0(state) = Interval(0, typemax(UInt64))

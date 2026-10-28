@@ -68,7 +68,7 @@ function crop_cell!(
         for v in shape_vectors(cell.shapes), s in v
             clip_shape(emit, s, window)
         end
-        cropped = Cell(new_name, sink.shapes, new_placements)
+        cropped = Cell(new_name, sink.shapes, new_placements; properties = copy(cell.properties))
     else
         cropped = copy_cell(cell; name = new_name)
         push!(cropped.edits, ClipShapes(window), ReplacePlacements(new_placements))
@@ -123,7 +123,7 @@ function crop_placement_instance!(
 )
     iszero(mod(p.rotation, 90)) || return keep_whole!(context, out, p)
     variant = crop_cell!(context, p.cell, inverse_placement_box(window, p))
-    push!(out, CellPlacement(variant, p.location, p.rotation, p.magnification, p.flipped, nothing))
+    push!(out, CellPlacement(variant, p.location, p.rotation, p.magnification, p.flipped, nothing, p.properties))
 end
 
 function keep_whole!(context::CropContext, out::Vector{CellPlacement}, p::CellPlacement)

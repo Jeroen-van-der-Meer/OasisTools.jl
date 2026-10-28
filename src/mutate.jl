@@ -34,7 +34,7 @@ add_cell!(oas::Oasis, cell_name::Union{Symbol, AbstractString}) =
 
 """
     add_shape!(cell, shape)
-    add_shape!(cell, geometry, layer, datatype; repetition = nothing)
+    add_shape!(cell, geometry, layer, datatype; repetition = nothing, properties = Property[])
 
 Add a shape to a cell.
 
@@ -70,14 +70,15 @@ end
 
 function add_shape!(
     cell::Cell, geom, layer::Integer, datatype::Integer;
-    repetition = nothing
+    repetition = nothing, properties::AbstractVector{Property} = Property[]
 )
-    add_shape!(cell, Shape(geom, UInt64(layer), UInt64(datatype), repetition))
+    props = isempty(properties) ? nothing : collect(properties)
+    add_shape!(cell, Shape(geom, UInt64(layer), UInt64(datatype), repetition, props))
 end
 
 """
     add_placement!(cell, placement)
-    add_placement!(cell, cell_name, location; rotation = 0.0, magnification = 1.0,
+    add_placement!(cell, cell_name, location; rotation = 0.0, magnification = 1.0, properties = Property[],
                    flipped = false, repetition = nothing)
 
 Add a cell placement to a cell.
@@ -102,11 +103,12 @@ add_placement!(cell::Cell, p::CellPlacement) =
 function add_placement!(
     cell::Cell, cell_name::Symbol, location::Point{2, Int64};
     rotation::Real = 0.0, magnification::Real = 1.0,
-    flipped::Bool = false, repetition = nothing)
+    flipped::Bool = false, repetition = nothing, properties::AbstractVector{Property} = Property[])
+    props = isempty(properties) ? nothing : collect(properties)
     add_placement!(
         cell, CellPlacement(
             cell_name, location, Float64(rotation),
-            Float64(magnification), flipped, repetition
+            Float64(magnification), flipped, repetition, props
         )
     )
 end
@@ -146,7 +148,7 @@ function rename_cell!(oas::Oasis, old_name, new_name)
     haskey(oas, new_name) && error("Cell with name $new_name already exists")
     # A cell's name can't change, but its contents can simply move to a new cell.
     cell = oas.cells[index]
-    oas.cells[index] = Cell(new_name, cell.shapes, cell.placements, cell.source, cell.index, cell.edits)
+    oas.cells[index] = Cell(new_name, cell.shapes, cell.placements, cell.source, cell.index, cell.edits, cell.properties)
     reindex_cells!(oas)
     for cell in cells(oas)
         may_place(cell, old_name) && edit_cell!(cell, RenamePlacements(old_name, new_name))
@@ -251,7 +253,8 @@ function merge_layers!(layers::AbstractVector{Layer}, other::AbstractVector{Laye
 end
 
 # Copies can be edited independently of the original.
-Base.copy(oas::Oasis) = Oasis(map(copy_cell, oas.cells), copy(oas.layers); unit = oas.unit)
+Base.copy(oas::Oasis) =
+    Oasis(map(copy_cell, oas.cells), copy(oas.layers); unit = oas.unit, properties = copy(oas.properties))
 
 """
     merge_oases(oas, others...)

@@ -5,6 +5,8 @@ function parse_cell_bytes(bytes)
         record_type = OasisTools.read_byte(state)
         OasisTools.read_record(record_type, state)
     end
+    # The last element is held back until it's clear that no more of its properties follow.
+    OasisTools.flush_pending!(state)
     return state
 end
 
@@ -274,8 +276,11 @@ end
         oas = oasisread(filepath; lazy = true)
         @test oas isa Oasis
         s = Suppressor.@capture_out Base.show(oas)
-        # Nothing is decoded just to show the file.
-        @test s == "OASIS file with 2 cells, whose hierarchy is known once they are indexed (see `index!`)"
+        # Nothing is decoded just to show the file, so the top cells come from S_TOP_CELL.
+        @test s == """
+OASIS file with the following top cells, according to its S_TOP_CELL property:
+TOP
+└─ ?"""
         top_cell = oas["TOP"]
         @test top_cell.source.bytes[1] == 17 # First byte of a PLACEMENT record
         bottom_cell = oas["BOTTOM"]
@@ -314,8 +319,13 @@ end
         oas = oasisread(filepath; lazy = true)
         @test oas isa Oasis
         s = Suppressor.@capture_out Base.show(oas)
-        # Nothing is decoded just to show the file.
-        @test s == "OASIS file with 2 cells, whose hierarchy is known once they are indexed (see `index!`)"
+        # Nothing is decoded just to show the file, so the top cells come from S_TOP_CELL.
+        @test s == """
+OASIS file with the following top cells, according to its S_TOP_CELL property:
+OTHERTOP
+└─ ?
+TOP
+└─ ?"""
         @test !isloaded(oas["TOP"])
         @test !isloaded(oas["OTHERTOP"])
     end
@@ -494,4 +504,90 @@ end
     copied = tempname()
     oasiswrite(copied, oasisread(path; lazy = true))
     @test only(shapes(oasisread(copied)[:TOP])).shape == expected
+end
+
+@testset "Properties" begin
+    leb(x) = (x = UInt64(x); out = UInt8[]; while true
+        b = UInt8(x & 0x7f); x >>= 7
+        iszero(x) && return push!(out, b)
+        push!(out, b | 0x80)
+    end)
+    str(s) = vcat(leb(ncodeunits(s)), codeunits(s))
+    # PROPERTY records, with the name as a string or as a PROPNAME number, and their values.
+    property(name, values...; standard = false) =
+        vcat(0x1c, UInt8((length(values) << 4) | 0x04 | standard), str(name), values...)
+    property_by_number(n, values...) = vcat(0x1c, UInt8((length(values) << 4) | 0x06), leb(n), values...)
+    astring(s) = vcat(0x0a, str(s))
+    unsigned(x) = vcat(0x08, leb(x))
+    whole(x) = vcat(0x00, leb(x))
+    propstring(n) = vcat(0x0d, leb(n))
+    rectangle(layer) = UInt8[0x14, 0x7b, layer, 0x00, 0x0a, 0x0a, 0x00, 0x00]
+    function cblock(contents)
+        compressed = transcode(OasisTools.CodecZlib.DeflateCompressor, contents)
+        return vcat(0x22, 0x00, leb(length(contents)), leb(length(compressed)), compressed)
+    end
+
+    path = raw_file(
+        vcat(
+            # A file property, with its name and value given by PROPNAME and PROPSTRING
+            # records further on.
+            property_by_number(0, propstring(0)),
+            0x04, str("TOP"), 0x00, property("after_cellname", whole(1)),
+            0x04, str("SUB"), 0x01,
+            # LAYERNAME (for 1/0), whose property isn't kept anywhere.
+            0x0b, str("M1"), 0x03, 0x01, 0x03, 0x00, property("of_layername"),
+            0x07, str("pname"), 0x09, str("hello")
+        ),
+        0 => vcat(
+            property("of_cell", astring("c")),
+            rectangle(1), property("rect", unsigned(7)), property_by_number(0, propstring(0)),
+            UInt8[0x11, 0xf0, 0x01, 0x00, 0x00], # Placement of SUB
+            UInt8[0x1c, 0x10], 0x09, 0x05,      # The previous name, with the value -2
+            0x1d,                               # The previous property once more
+            cblock(property("in_cblock")),      # Belongs to the placement before the CBLOCK
+            0x20, 0x00, str("x"),               # XELEMENT, whose property is dropped
+            property("of_xelement"),
+            rectangle(2), UInt8[0x1c, 0x0c], str("same_values") # The values of the previous property
+        ),
+        1 => vcat(rectangle(3), property("of_sub_shape", whole(5)))
+    )
+    for lazy in (false, true)
+        oas = oasisread(path; lazy = lazy)
+        @test properties(oas) == [Property("pname", ["hello"])]
+        top = oas[:TOP]
+        @test properties(top) == [Property("after_cellname", [1.0]), Property("of_cell", ["c"])]
+        by_layer = Dict(Int(s.layer) => properties(s) for s in shapes(top))
+        @test by_layer[1] == [Property("rect", [UInt64(7)]), Property("pname", ["hello"])]
+        @test by_layer[2] == [Property("same_values", [])]
+        @test properties(only(placements(top))) ==
+            [Property("pname", [Int64(-2)]), Property("pname", [Int64(-2)]), Property("in_cblock")]
+        @test properties(only(shapes(oas[:SUB]))) == [Property("of_sub_shape", [5.0])]
+        # Properties of a cell that isn't loaded come from decoding it.
+        lazy && @test tier(top) == 1
+    end
+
+    @testset "Shapes and placements derived from others keep their properties" begin
+        oas = oasisread(path)
+        flat = flatten(oas, :TOP)
+        @test Property("of_sub_shape", [5.0]) in [p for s in shapes(flat[:TOP]) for p in properties(s)]
+        sub_placement = only(placements(oas[:TOP]))
+        @test all(p -> properties(p) == properties(sub_placement), collect(expand(sub_placement)))
+        window = Rect{2, Int64}(Point{2, Int64}(0, 0), Point{2, Int64}(5, 5))
+        cropped = crop(oas, :TOP, window)
+        @test Property("rect", [UInt64(7)]) in [p for s in shapes(cropped[:TOP]) for p in properties(s)]
+        rename_cell!(oas, :SUB, :SUB2)
+        @test properties(only(placements(oas[:TOP]))) == properties(sub_placement)
+    end
+
+    @testset "Malformed properties" begin
+        # Reusing the name or values of a previous property, when there is none.
+        @test_throws OasisParseError parse_cell_bytes(UInt8[0x1c, 0x00])
+        @test_throws OasisParseError parse_cell_bytes(vcat(0x1c, 0x0c, str("a")))
+        @test_throws OasisParseError parse_cell_bytes(UInt8[0x1d])
+        # A PROPNAME or PROPSTRING number that no record defines.
+        @test_throws OasisParseError parse_cell_bytes(vcat(rectangle(1), property_by_number(9)))
+        @test_throws OasisParseError parse_cell_bytes(vcat(rectangle(1), property("a", propstring(9))))
+        # An unknown type of value.
+        @test_throws OasisParseError parse_cell_bytes(vcat(rectangle(1), property("a", UInt8[0x10, 0x00])))
+    end
 end

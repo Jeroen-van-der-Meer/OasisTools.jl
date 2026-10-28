@@ -1,6 +1,7 @@
 Base.@kwdef mutable struct FileModalVariables
-    lastPropertyName::Union{UInt64, Symbol} = Symbol()
-    lastValueList::Vector{Any} = [] # Can be of essentially any type
+    lastPropertyName::Union{Nothing, String, UInt64} = nothing
+    lastValueList::Union{Nothing, Vector{Union{PropertyValue, PropStringReference}}} = nothing
+    lastPropertyStandard::Bool = false
 end
 
 Base.@kwdef mutable struct ModalVariables
@@ -27,6 +28,9 @@ Base.@kwdef mutable struct ModalVariables
     pathEndExtension::Int64 = 0
     ctrapezoidType::UInt64 = 0
     circleRadius::UInt64 = 0
+    lastPropertyName::Union{Nothing, String, UInt64} = nothing
+    lastValueList::Union{Nothing, Vector{Union{PropertyValue, PropStringReference}}} = nothing
+    lastPropertyStandard::Bool = false
 end
 
 # The writer's view of the modal variables. Here `nothing` stands for the undefined state, which

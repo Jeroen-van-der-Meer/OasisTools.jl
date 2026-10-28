@@ -114,6 +114,6 @@ Both files must use the same database units, and their cells must have different
 # Caveats
 
 - There *will* be bugs.
-- Properties are currently ignored, and left out when writing.
+- Properties are read (see [`properties`](@ref)), but not yet written: files written by OasisTools have none.
 - Extension records (XNAME, XELEMENT and XGEOMETRY) are skipped, with a warning.
 - Curvilinear features are not yet supported.

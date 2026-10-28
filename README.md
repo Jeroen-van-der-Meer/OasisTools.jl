@@ -38,7 +38,7 @@ It returns an `Oasis` object, which contains a list of all the cells in your OAS
 # Caveats
 
 - There *will* be bugs.
-- Properties are currently ignored, and left out when writing.
+- Properties are read, but not yet written: files written by OasisTools have none.
 - Extension records (XNAME, XELEMENT and XGEOMETRY) are skipped, with a warning.
 - Curvilinear features are not yet supported.
 - One day there will be functionality to visually display your layout &mdash; stay tuned.

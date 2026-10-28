@@ -195,6 +195,42 @@ end
     end
 end
 
+# Properties in the form `check_properties` in klayout_helper.py compares them in. KLayout keeps
+# standard properties to itself, except for S_GDS_PROPERTY, which it shows as a property named by
+# its first value.
+function property_lines(oas::Oasis)
+    text(v) = v isa String ? v : string(Float64(v))
+    function line(io, cell, kind, props)
+        pairs = String[]
+        for p in props
+            if p.name == "S_GDS_PROPERTY"
+                push!(pairs, "$(Int(p.values[1]))=$(text(p.values[2]))")
+            elseif !p.standard
+                push!(pairs, "$(p.name)=$(text(only(p.values)))")
+            end
+        end
+        isempty(pairs) || println(io, cell, '\t', kind, '\t', join(sort(pairs), ";"))
+    end
+    path = tempname()
+    open(path, "w") do io
+        line(io, "", "file", properties(oas))
+        for cell in cells(oas)
+            line(io, name(cell), "cell", properties(cell))
+            foreach_shape(s -> line(io, name(cell), "shape", properties(s)), cell)
+            foreach(p -> line(io, name(cell), "placement", properties(p)), placements(cell))
+        end
+    end
+    return path
+end
+
+@testset "Properties agree with KLayout" begin
+    file = klayout_file("properties")
+    for lazy in (false, true)
+        lines = property_lines(oasisread(file; lazy = lazy))
+        queue_klayout_check("Properties, lazy = $lazy", "check_properties", file, lines)
+    end
+end
+
 # Hand-assembled files, for records that KLayout never writes. KLayout's reading of each file is
 # the reference that OasisTools' reading of it is held against.
 

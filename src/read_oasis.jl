@@ -25,7 +25,7 @@ TOP
 # Caveats
 
 - There *will* be bugs.
-- Properties are not stored.
+- Properties are read (see [`properties`](@ref)), but not yet written.
 - Extension records (XNAME, XELEMENT and XGEOMETRY) are skipped, with a warning.
 - Curvilinear features are not yet supported.
 """
@@ -41,14 +41,23 @@ function oasisread(filename::AbstractString; lazy::Bool = false)
         read_record(record_type, state)
     end
 
-    oas = Oasis(process_cells(state), state.layers; unit = state.metadata.unit)
+    # Properties may refer to PROPNAME and PROPSTRING records anywhere in the file, so they can
+    # only be resolved now.
+    resolve(raw) = resolve_property(state, raw, state.propnameReferences, state.propstringReferences)
+    file_properties = map(resolve, state.metadata.fileProperties)
+    oas = Oasis(process_cells(state, resolve), state.layers; unit = state.metadata.unit, properties = file_properties)
     lazy || load!(oas)
 
     return oas
 end
 
-function process_cells(state::FileParserState)
+function process_cells(state::FileParserState, resolve)
     cs = Vector{Cell}(undef, length(state.cells))
+    # Properties following CELLNAME records, by cell name.
+    cellname_properties = Dict(
+        lookup_reference(state, state.cellnameReferences, number, "cell name", "CELLNAME") => map(resolve, raws)
+        for (number, raws) in state.metadata.cellnameProperties
+    )
 
     for (i, preprocessed_cell) in enumerate(state.cells)
         if preprocessed_cell.nameOrNumber isa UInt64
@@ -60,9 +69,10 @@ function process_cells(state::FileParserState)
         end
 
         source = CellSource(
-            preprocessed_cell.bytes, state.cellnameReferences, state.textstringReferences
+            preprocessed_cell.bytes, state.cellnameReferences, state.textstringReferences,
+            state.propnameReferences, state.propstringReferences
         )
-        cs[i] = Cell(cell_name, source)
+        cs[i] = Cell(cell_name, source, get(cellname_properties, cell_name, Property[]))
     end
 
     return cs

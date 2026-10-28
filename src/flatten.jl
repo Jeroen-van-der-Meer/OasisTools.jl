@@ -111,7 +111,7 @@ end
 function flattened_cell(cell::Cell, edit::CellEdit)
     if isloaded(cell)
         contents = AppendElements(Shape[s for v in shape_vectors(cell.shapes) for s in v], copy(cell.placements))
-        return Cell(cell.name, nothing, nothing, nothing, nothing, CellEdit[contents, edit])
+        return Cell(cell.name, nothing, nothing, nothing, nothing, CellEdit[contents, edit], copy(cell.properties))
     end
     flattened = copy_cell(cell)
     push!(flattened.edits, edit)

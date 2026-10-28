@@ -149,16 +149,16 @@ translate(p::Path{2, Int64}, o::Point{2, Int64}) = Path(p.points .+ Ref(o), p.wi
 translate(c::Circle{Int64}, o::Point{2, Int64}) = Circle{Int64}(c.center + o, c.r)
 translate(t::Text, o::Point{2, Int64}) = Text(t.text, t.location + o, t.repetition)
 translate(s::Shape, o::Point{2, Int64}) =
-    Shape(translate(s.shape, o), s.layer, s.datatype, s.repetition)
+    Shape(translate(s.shape, o), s.layer, s.datatype, s.repetition, s.properties)
 translate(p::CellPlacement, o::Point{2, Int64}) = CellPlacement(
-    p.cell, p.location + o, p.rotation, p.magnification, p.flipped, p.repetition
+    p.cell, p.location + o, p.rotation, p.magnification, p.flipped, p.repetition, p.properties
 )
 
 with_repetition(s::Shape{Text}, rep) =
-    Shape(Text(s.shape.text, s.shape.location, rep), s.layer, s.datatype, rep)
-with_repetition(s::Shape, rep) = Shape(s.shape, s.layer, s.datatype, rep)
+    Shape(Text(s.shape.text, s.shape.location, rep), s.layer, s.datatype, rep, s.properties)
+with_repetition(s::Shape, rep) = Shape(s.shape, s.layer, s.datatype, rep, s.properties)
 with_repetition(p::CellPlacement, rep) =
-    CellPlacement(p.cell, p.location, p.rotation, p.magnification, p.flipped, rep)
+    CellPlacement(p.cell, p.location, p.rotation, p.magnification, p.flipped, rep, p.properties)
 
 # Moving a shape out of a placed cell into the cell that places it, i.e. applying placement `p`
 # to it. Repetitions combine with those of the placement. Rotations by multiples of 90 degrees
@@ -168,7 +168,7 @@ function transform_shape(s::Shape, p::CellPlacement)
     rep = _minkowski_repetition(
         p.repetition, _transform_repetition(s.repetition, p.rotation, p.magnification, p.flipped)
     )
-    return with_repetition(Shape(geometry, s.layer, s.datatype, nothing), rep)
+    return with_repetition(Shape(geometry, s.layer, s.datatype, nothing, s.properties), rep)
 end
 
 transform_point(x::Point{2, Int64}, p::CellPlacement) =
@@ -251,7 +251,7 @@ function clip_instance(emit, s::Shape{Rect{2, Int64}}, window::Rect{2, Int64})
     clo = Point{2, Int64}(max(lo[1], wlo[1]), max(lo[2], wlo[2]))
     chi = Point{2, Int64}(min(hi[1], whi[1]), min(hi[2], whi[2]))
     (chi[1] > clo[1] && chi[2] > clo[2]) || return
-    emit(Shape(make_box(clo, chi), s.layer, s.datatype, nothing))
+    emit(Shape(make_box(clo, chi), s.layer, s.datatype, nothing, s.properties))
 end
 
 clip_instance(emit, s::Shape{Polygon{2, Int64}}, window::Rect{2, Int64}) =
@@ -267,7 +267,7 @@ clip_instance(emit, s::Shape, ::Rect{2, Int64}) = emit(s)
 function clip_polygon_shape(emit, s::Shape, points, window::Rect{2, Int64})
     clipped = clip_polygon(points, window)
     (length(clipped) >= 3 && !iszero(twice_area(clipped))) || return
-    emit(Shape(Polygon(clipped), s.layer, s.datatype, nothing))
+    emit(Shape(Polygon(clipped), s.layer, s.datatype, nothing, s.properties))
 end
 
 # Sutherland–Hodgman clipping against each of the four sides of the window in turn. Concave

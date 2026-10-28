@@ -16,6 +16,19 @@ function roots(oas::Oasis)
     return roots_from_placements(cells(oas), cached_placements)
 end
 
+# The top cells according to the file's S_TOP_CELL properties, as far as they exist. Files are
+# free to leave this property out, or to get it wrong, so it is only a hint.
+function declared_top_cells(oas::Oasis)
+    names = Symbol[]
+    for p in properties(oas)
+        p.name == "S_TOP_CELL" || continue
+        for v in p.values
+            v isa String && haskey(oas, v) && Symbol(v) ∉ names && push!(names, Symbol(v))
+        end
+    end
+    return names
+end
+
 # Root cells if they're known without decoding anything, and `nothing` otherwise.
 function known_roots(cs::AbstractVector{Cell})
     all(cell -> !isnothing(known_placements(cell)), cs) || return nothing

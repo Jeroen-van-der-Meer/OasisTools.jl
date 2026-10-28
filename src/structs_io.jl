@@ -47,6 +47,22 @@ function FileParserState(buf::AbstractVector{UInt8})
     )
 end
 
+# The properties of an element follow it, so the decoder holds on to each element until it knows
+# that no more of its properties follow. What it holds is shared between the states that decode
+# a cell and the CBLOCKs within it, as properties may follow their element across a CBLOCK.
+mutable struct PendingElement
+    # Nothing at the start of a cell, where properties belong to the cell; SKIPPED after
+    # records that aren't handed on, such as XELEMENTs, whose properties are dropped.
+    element::Any
+    const properties::Vector{Property}
+    const cellProperties::Vector{Property}
+end
+
+PendingElement() = PendingElement(nothing, Property[], Property[])
+
+struct Skipped end
+const SKIPPED = Skipped()
+
 # Decodes the records of a cell, handing every shape and placement to `sink`, which decides what
 # to do with them. See `sinks.jl`.
 mutable struct CellParserState{B <: AbstractVector{UInt8}, S} <: AbstractParserState
@@ -54,25 +70,31 @@ mutable struct CellParserState{B <: AbstractVector{UInt8}, S} <: AbstractParserS
     pos::Int64
     const cellnameReferences::Dict{UInt64, Symbol}
     const textstringReferences::Dict{UInt64, Symbol}
+    const propnameReferences::Dict{UInt64, Symbol}
+    const propstringReferences::Dict{UInt64, Symbol}
     const sink::S
     const mod::ModalVariables
+    const pending::PendingElement
 end
 
 function CellParserState(source::CellSource, sink)
     return CellParserState{typeof(source.bytes), typeof(sink)}(
         source.bytes, 1,
         source.cellnameReferences, source.textstringReferences,
+        source.propnameReferences, source.propstringReferences,
         sink,
-        ModalVariables()
+        ModalVariables(),
+        PendingElement()
     )
 end
 
 function CellParserState(buf::AbstractVector{UInt8}, sink = ContentsSink())
     return CellParserState{typeof(buf), typeof(sink)}(
         buf, 1,
-        Dict(), Dict(),
+        Dict(), Dict(), Dict(), Dict(),
         sink,
-        ModalVariables()
+        ModalVariables(),
+        PendingElement()
     )
 end
 
@@ -101,8 +123,10 @@ new_state(state::CellParserState{<:Any, S}, new_buf::AbstractVector{UInt8}) wher
     CellParserState{typeof(new_buf), S}(
         new_buf, 1,
         state.cellnameReferences, state.textstringReferences,
+        state.propnameReferences, state.propstringReferences,
         state.sink,
-        state.mod
+        state.mod,
+        state.pending
     )
 
 new_state(::SkipParserState, new_buf::AbstractVector{UInt8}) =

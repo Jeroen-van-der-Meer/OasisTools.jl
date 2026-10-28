@@ -36,7 +36,7 @@ struct RenamePlacements <: CellEdit
 end
 
 function apply_edit(emit, e::RenamePlacements, p::CellPlacement)
-    emit(p.cell == e.old ? CellPlacement(e.new, p.location, p.rotation, p.magnification, p.flipped, p.repetition) : p)
+    emit(p.cell == e.old ? CellPlacement(e.new, p.location, p.rotation, p.magnification, p.flipped, p.repetition, p.properties) : p)
     return nothing
 end
 

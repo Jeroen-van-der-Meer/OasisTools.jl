@@ -314,7 +314,7 @@ end
 function write_shape(state::WriterState, shape::Shape{Triangle{2, Int64}})
     tri = shape.shape
     polygon = Polygon([tri[1], tri[2], tri[3]])
-    write_shape(state, Shape(polygon, shape.layer, shape.datatype, shape.repetition))
+    write_shape(state, Shape(polygon, shape.layer, shape.datatype, shape.repetition, shape.properties))
 end
 
 function write_shape(state::WriterState, shape::Shape{Rect{2, Int64}})

@@ -33,6 +33,14 @@ A single decoder, `CellParserState`, interprets the records of a cell. It doesn'
 
 `decode_cell(sink, cell)` feeds a sink from any cell: from memory if the cell is loaded, and from its bytes otherwise, passing everything through the cell's pending edits on the way.
 
+### Properties
+
+A PROPERTY record belongs to the record before it. At file level, that is the START record, for properties of the whole file, or a CELLNAME record, for properties of a cell; properties of other records, such as LAYERNAME, are read but not kept. Their names and values may refer to PROPNAME and PROPSTRING records anywhere in the file, so they are only resolved once the whole file has been read.
+
+Within a cell, properties before the first element belong to the cell itself, and later ones to the element before them. The decoder therefore holds on to each element until it knows that no more of its properties follow, which is when the next element starts or the cell ends. As the spec asks, compressed blocks are transparent to this: a property inside a CBLOCK can belong to an element before it. Properties following records that aren't handed on, such as XELEMENT records, are dropped rather than attached to the element before.
+
+Shapes and placements store their properties as `nothing` when they have none, so that elements without properties don't each carry an empty list. [`properties`](@ref) returns a list either way.
+
 ## Lazy loading
 
 Lazy loading is the key feature that distinguishes OasisTools.jl from other OASIS readers.

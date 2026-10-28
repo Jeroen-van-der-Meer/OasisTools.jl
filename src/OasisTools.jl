@@ -36,6 +36,9 @@ export oasiswrite
 export placements
 export plot_cell
 export plot_shape!
+export properties
+export Property
+export PropertyValue
 export PointGridRange
 export remove_cell!
 export rename_cell!
@@ -56,6 +59,7 @@ const DEFAULT_UNIT = 1000
 
 # Structs
 include("structs_data.jl")
+include("properties.jl")
 include("modal_variables.jl")
 include("structs_oasis.jl")
 include("structs_io.jl")

@@ -43,7 +43,13 @@ function Base.show(io::IO, oas::Oasis)
         return
     end
     rts = known_roots(cells(oas))
-    if isnothing(rts)
+    declared = isnothing(rts) ? declared_top_cells(oas) : Symbol[]
+    if !isempty(declared)
+        # The file's S_TOP_CELL property can be wrong, so it is only used until the actual
+        # hierarchy is known.
+        print(io, "OASIS file with the following top cells, according to its S_TOP_CELL property:\n")
+        show_cells(oas; maxdepth = 2, flat = false, io = io, roots = declared)
+    elseif isnothing(rts)
         print(io, "OASIS file with $ncells cell$(ncells == 1 ? "" : "s"), whose hierarchy is known once ")
         print(io, "they are indexed (see `index!`)")
     elseif isempty(rts)

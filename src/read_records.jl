@@ -4,6 +4,7 @@ function read_start(state::FileParserState)
         @warn "Unknown file version detected. Attempting to read anyway."
     end
     state.metadata.unit = read_real(state) # Convention: Grid steps per micron.
+    state.metadata.propertyTarget = :file
     offset_flag = rui(state)
     if iszero(offset_flag)
         # We ignore the 12 integers corresponding to the table offset structure.
@@ -15,14 +16,16 @@ end
 
 function read_cellname_impl(state::FileParserState)
     cellname = read_symbol(state)
-    cellname_number = length(state.cellnameReferences)
+    cellname_number = UInt64(length(state.cellnameReferences))
     state.cellnameReferences[cellname_number] = cellname
+    state.metadata.propertyTarget = cellname_number
 end
 
 function read_cellname_ref(state::FileParserState)
     cellname = read_symbol(state)
     cellname_number = rui(state)
     state.cellnameReferences[cellname_number] = cellname
+    state.metadata.propertyTarget = cellname_number
 end
 
 function read_textstring_impl(state::FileParserState)
@@ -133,7 +136,7 @@ function read_placement(state::CellParserState)
     repetition = read_repetition(state, info_byte, 5)
     is_flipped = bit_is_one(info_byte, 8)
     placement = CellPlacement(cellname, location, rotation, 1.0, is_flipped, repetition)
-    push_element!(state.sink, placement)
+    emit_element!(state, placement)
 end
 
 function read_placement_mag_angle(state::CellParserState)
@@ -167,7 +170,7 @@ function read_placement_mag_angle(state::CellParserState)
     repetition = read_repetition(state, info_byte, 5)
     is_flipped = bit_is_one(info_byte, 8)
     placement = CellPlacement(cellname, location, rotation, magnification, is_flipped, repetition)
-    push_element!(state.sink, placement)
+    emit_element!(state, placement)
 end
 
 function read_text(state::CellParserState)
@@ -194,7 +197,7 @@ function read_text(state::CellParserState)
 
     text = Text(textstring, Point{2, Int64}(x, y), repetition)
     shape = Shape(text, textlayer_number, texttype_number, repetition)
-    push_element!(state.sink, shape)
+    emit_element!(state, shape)
 end
 
 function read_rectangle(state::CellParserState)
@@ -218,7 +221,7 @@ function read_rectangle(state::CellParserState)
     size = Point{2, Int64}(width, height)
     rectangle = Rect{2, Int64}(lower_left_corner, size)
     shape = Shape(rectangle, layer_number, datatype_number, repetition)
-    push_element!(state.sink, shape)
+    emit_element!(state, shape)
 end
 
 function read_polygon(state::CellParserState)
@@ -236,7 +239,7 @@ function read_polygon(state::CellParserState)
     vertices .+= Point{2, Int64}(x, y)
     polygon = Polygon(vertices)
     shape = Shape(polygon, layer_number, datatype_number, repetition)
-    push_element!(state.sink, shape)
+    emit_element!(state, shape)
 end
 
 function read_path(state::CellParserState)
@@ -310,7 +313,7 @@ function read_path(state::CellParserState)
     vertices .+= Point{2, Int64}(x, y)
     path = Path(vertices, 2 * signed(halfwidth))
     shape = Shape(path, layer_number, datatype_number, repetition)
-    push_element!(state.sink, shape)
+    emit_element!(state, shape)
 end
 
 function read_trapezoid(state::CellParserState, delta_a_explicit::Bool, delta_b_explicit::Bool)
@@ -353,7 +356,7 @@ function read_trapezoid(state::CellParserState, delta_a_explicit::Bool, delta_b_
     vertices .+= Point{2, Int64}(x, y)
     trapezoid = Polygon(vertices)
     shape = Shape(trapezoid, layer_number, datatype_number, repetition)
-    push_element!(state.sink, shape)
+    emit_element!(state, shape)
 end
 
 ctrapezoid_vertices_0(w::UInt64, h::UInt64) = [
@@ -491,7 +494,7 @@ function read_ctrapezoid(state::CellParserState)
         ctrapezoid = Rect{2, Int64}(vertices[1], vertices[2] - vertices[1])
     end
     shape = Shape(ctrapezoid, layer_number, datatype_number, repetition)
-    push_element!(state.sink, shape)
+    emit_element!(state, shape)
 end
 
 function read_circle(state::CellParserState)
@@ -505,36 +508,20 @@ function read_circle(state::CellParserState)
     center = Point{2, Int64}(x, y)
     circle = HyperSphere{2, Int64}(center, radius)
     shape = Shape(circle, layer_number, datatype_number, repetition)
-    push_element!(state.sink, shape)
+    emit_element!(state, shape)
 end
 
-function read_property(state::FileParserState)
-    info_byte = read_byte(state)
-    propname_explicit = bit_is_one(info_byte, 6)
-    if propname_explicit
-        propname_as_ref = bit_is_one(info_byte, 7)
-        if propname_as_ref
-            propname = rui(state)
-        else
-            propname = read_symbol(state)
-        end
-        state.mod.lastPropertyName = propname
-    else
-        propname = state.mod.lastPropertyName
+# A PROPERTY record at file level belongs to the record before it (spec 31.8): START, for
+# properties of the whole file, or a CELLNAME record, for properties of that cell. Properties of
+# other records, such as LAYERNAME, are read but not kept.
+function read_property(state::FileParserState, repeat::Bool = false)
+    raw = repeat ? repeat_raw_property(state) : read_raw_property(state)
+    target = state.metadata.propertyTarget
+    if target === :file
+        push!(state.metadata.fileProperties, raw)
+    elseif target isa UInt64
+        push!(get!(state.metadata.cellnameProperties, target, RawProperty[]), raw)
     end
-    propvalue_implicit = bit_is_one(info_byte, 5)
-    if propvalue_implicit
-        propvalues = state.mod.lastValueList
-    else
-        number_of_values = info_byte >> 4
-        if number_of_values == 0x0f
-            number_of_values = rui(state)
-        end
-        propvalues = [read_property_value(state) for _ in 1:number_of_values]
-        state.mod.lastValueList = propvalues
-    end
-    file_property = FileProperty(propname, propvalues)
-    push!(state.metadata.fileProperties, file_property)
 end
 
 # The extension records XNAME, XELEMENT and XGEOMETRY hold user-defined data, which the spec
@@ -549,6 +536,7 @@ end
 
 function read_xelement(state::CellParserState)
     @warn "Skipping XELEMENT records, which hold extension data that OasisTools doesn't interpret" maxlog = 1
+    skip_element!(state)
     skip_xelement(state)
 end
 
@@ -556,6 +544,7 @@ end
 # for the records that follow.
 function read_xgeometry(state::CellParserState)
     @warn "Skipping XGEOMETRY records, which hold extension geometry that OasisTools doesn't interpret" maxlog = 1
+    skip_element!(state)
     info_byte = read_byte(state)
     skip_integer(state) # xgeometry-attribute
     read_or_modal(state, rui, Val(:layer), info_byte, 8)
@@ -563,6 +552,47 @@ function read_xgeometry(state::CellParserState)
     skip_string(state) # xgeometry-string
     read_or_modal_xy(state, Val(:geometryX), Val(:geometryY), info_byte, 4)
     read_repetition(state, info_byte, 6)
+    return nothing
+end
+
+# Elements are handed on once it is known that no more properties of theirs follow, which is
+# when the next element starts, or the cell ends.
+function emit_element!(state::CellParserState, element)
+    flush_pending!(state)
+    state.pending.element = element
+    return nothing
+end
+
+# For records that aren't handed on, so that their properties don't end up with the element
+# before them.
+function skip_element!(state::CellParserState)
+    flush_pending!(state)
+    state.pending.element = SKIPPED
+    return nothing
+end
+
+function flush_pending!(state::CellParserState)
+    pending = state.pending
+    element = pending.element
+    if element isa Union{Shape, CellPlacement}
+        props = isempty(pending.properties) ? nothing : copy(pending.properties)
+        push_element!(state.sink, isnothing(props) ? element : with_properties(element, props))
+        empty!(pending.properties)
+    end
+    pending.element = nothing
+    return nothing
+end
+
+# Properties before the first element of a cell belong to the cell itself (spec 31.8).
+function read_cell_property(state::CellParserState, repeat::Bool = false)
+    raw = repeat ? repeat_raw_property(state) : read_raw_property(state)
+    property = resolve_property(state, raw, state.propnameReferences, state.propstringReferences)
+    element = state.pending.element
+    if isnothing(element)
+        push!(state.pending.cellProperties, property)
+    elseif element !== SKIPPED
+        push!(state.pending.properties, property)
+    end
     return nothing
 end
 
@@ -583,6 +613,9 @@ function read_cblock(state::AbstractParserState)
 end
 
 function read_record(record_type::UInt8, state::FileParserState)
+    # Any record other than PAD, PROPERTY and CBLOCK ends the run of properties belonging to the
+    # record before; START and CELLNAME records start a new one.
+    record_type in (0x00, 0x1c, 0x1d, 0x22) || (state.metadata.propertyTarget = nothing)
     # Switch statements have been shuffled corresponding to how common each record type is.
     record_type == 4  && return read_cellname_ref(state) # CELLNAME
     record_type == 13 && return read_cell_ref(state) # CELL
@@ -598,7 +631,7 @@ function read_record(record_type::UInt8, state::FileParserState)
     record_type == 10 && return read_propstring_ref(state) # PROPSTRING
     record_type == 14 && return read_cell_str(state) # CELL
     record_type == 28 && return read_property(state) # PROPERTY
-    record_type == 29 && return skip_record(state) # PROPERTY
+    record_type == 29 && return read_property(state, true) # PROPERTY, repeated
     record_type == 0  && return skip_record(state) # PAD
     record_type == 1  && return read_start(state) # START
     record_type == 2  && return skip_record(state) # END
@@ -618,8 +651,8 @@ function read_record(record_type::UInt8, state::CellParserState)
     record_type == 15 && return read_xyabsolute(state) # XYABSOLUTE
     record_type == 16 && return read_xyrelative(state) # XYRELATIVE
     record_type == 19 && return read_text(state) # TEXT
-    record_type == 28 && return skip_property(state) # PROPERTY
-    record_type == 29 && return skip_record(state) # PROPERTY
+    record_type == 28 && return read_cell_property(state) # PROPERTY
+    record_type == 29 && return read_cell_property(state, true) # PROPERTY, repeated
     record_type == 23 && return read_trapezoid(state, true, true) # TRAPEZOID
     record_type == 24 && return read_trapezoid(state, true, false) # TRAPEZOID
     record_type == 25 && return read_trapezoid(state, false, true) # TRAPEZOID

@@ -1,5 +1,5 @@
 """
-    struct Shape(shape, layer, datatype, repetition)
+    struct Shape(shape, layer, datatype, repetition, properties = nothing)
 
 Geometric shape (such as a polygon or rectangle) or text.
 
@@ -14,13 +14,20 @@ Geometric shape (such as a polygon or rectangle) or text.
 - `datatype::UInt64`: The 'datatype' that your shape lives in. To clarify, if your shape
   lives in `(1/0)`, then `datatype = 0`.
 - `repetition`: Specifies whether the shape is repeated. If not, `repetition = nothing`.
+- `properties`: The shape's properties, or `nothing` if it has none. Use [`properties`](@ref)
+  to get them as a list either way.
 """
 struct Shape{T}
     shape::T
     layer::UInt64 # The text layer, for texts
     datatype::UInt64 # The text type, for texts
     repetition::Union{Nothing, Vector{Point{2, Int64}}, PointGridRange}
+    properties::NoProperties
 end
+
+Shape(shape, layer, datatype, repetition) = Shape(shape, layer, datatype, repetition, nothing)
+
+properties(s::Shape) = property_list(s.properties)
 
 """
     struct Layer
@@ -77,14 +84,14 @@ Base.isdisjoint(l1::Layer, l2::Layer) =
     isdisjoint(l1.layer, l2.layer) ||
     isdisjoint(l1.datatype, l2.datatype)
 
-struct FileProperty
-    nameOrNumber::Union{UInt64, Symbol}
-    valueList::Vector{Any}
-end
-
 Base.@kwdef mutable struct Metadata
     unit::Float64 = DEFAULT_UNIT
-    const fileProperties::Vector{FileProperty} = []
+    # Properties as read, before resolving references to PROPNAME and PROPSTRING records.
+    const fileProperties::Vector{RawProperty} = []
+    const cellnameProperties::Dict{UInt64, Vector{RawProperty}} = Dict()
+    # What a PROPERTY record at file level belongs to: the file (`:file`), the cell with the given
+    # CELLNAME number, or nothing that is kept (`nothing`).
+    propertyTarget::Union{Nothing, Symbol, UInt64} = nothing
 end
 
 struct Text # Might want to think of a better name for this struct, since Text is used by Docs.
@@ -130,6 +137,8 @@ Object encoding the placement of a cell in another cell.
   x-axis. Note: If a cell is flipped and has nonzero rotation, then the flip is applied first,
   and the rotation is applied second.
 - `repetition`: Specifies whether the placement is repeated. If not, `repetition = nothing`.
+- `properties`: The placement's properties, or `nothing` if it has none. Use
+  [`properties`](@ref) to get them as a list either way.
 """
 struct CellPlacement
     cell::Symbol
@@ -138,7 +147,18 @@ struct CellPlacement
     magnification::Float64
     flipped::Bool
     repetition::Union{Nothing, Vector{Point{2, Int64}}, PointGridRange}
+    properties::NoProperties
 end
+
+CellPlacement(cell, location, rotation, magnification, flipped, repetition) =
+    CellPlacement(cell, location, rotation, magnification, flipped, repetition, nothing)
+
+properties(p::CellPlacement) = property_list(p.properties)
+
+# The same shape or placement, with other properties.
+with_properties(s::Shape, properties::NoProperties) = Shape(s.shape, s.layer, s.datatype, s.repetition, properties)
+with_properties(p::CellPlacement, properties::NoProperties) =
+    CellPlacement(p.cell, p.location, p.rotation, p.magnification, p.flipped, p.repetition, properties)
 
 """
     *(outer::CellPlacement, inner::CellPlacement)
@@ -165,7 +185,7 @@ function Base.:*(outer::CellPlacement, inner::CellPlacement)
     )
     rep = _minkowski_repetition(outer.repetition, inner_rep)
 
-    return CellPlacement(inner.cell, loc, rot, mag, flip, rep)
+    return CellPlacement(inner.cell, loc, rot, mag, flip, rep, inner.properties)
 end
 
 function _transform_point(
@@ -256,7 +276,7 @@ function expand(p::CellPlacement)
         return (p for _ in 1:1)
     end
     return (
-        CellPlacement(p.cell, p.location + offset, p.rotation, p.magnification, p.flipped, nothing)
+        CellPlacement(p.cell, p.location + offset, p.rotation, p.magnification, p.flipped, nothing, p.properties)
         for offset in rep
     )
 end
@@ -355,7 +375,11 @@ struct CellSource
     bytes::SubArray{UInt8, 1, Vector{UInt8}, Tuple{UnitRange{Int64}}, true}
     cellnameReferences::Dict{UInt64, Symbol}
     textstringReferences::Dict{UInt64, Symbol}
+    propnameReferences::Dict{UInt64, Symbol}
+    propstringReferences::Dict{UInt64, Symbol}
 end
+
+CellSource(bytes, cellnames, textstrings) = CellSource(bytes, cellnames, textstrings, Dict(), Dict())
 
 """
     struct ElementCounts
@@ -383,11 +407,13 @@ memory. See [`index!`](@ref).
   memory than a dictionary would.
 - `extent::Union{Nothing, Rect{2, Int64}}`: Bounding box of the cell's own shapes, ignoring
   its placements; `nothing` if the cell has no shapes.
+- `properties::Vector{Property}`: Properties following the cell's CELL record.
 """
 struct CellIndex
     placements::Vector{CellPlacement}
     layers::Vector{Pair{Tuple{UInt64, UInt64}, ElementCounts}}
     extent::Union{Nothing, Rect{2, Int64}}
+    properties::Vector{Property}
 end
 
 """
@@ -419,6 +445,9 @@ that isn't loaded comes in tiers; see [`tier`](@ref).
 - `index::Union{Nothing, CellIndex}`: Summary of the contents of a cell that isn't loaded, if
   it was computed.
 - `edits::Vector{CellEdit}`: Changes to a cell that isn't loaded, still to be applied.
+- `properties::Vector{Property}`: The cell's known properties: those following its CELLNAME
+  record, and for a loaded cell also those following its CELL record. Use
+  [`properties`](@ref) to get all of them for any cell.
 
 A loaded cell can be created from its shapes and placements, as `Cell(name, shapes, placements)`.
 
@@ -431,17 +460,23 @@ mutable struct Cell
     source::Union{Nothing, CellSource}
     index::Union{Nothing, CellIndex}
     const edits::Vector{CellEdit}
+    const properties::Vector{Property}
 end
 
-Cell(name::AbstractString, args...) = Cell(Symbol(name), args...)
+Cell(name::AbstractString, args...; kwargs...) = Cell(Symbol(name), args...; kwargs...)
 
-Cell(name::Symbol, shapes::ShapeStore, placements::AbstractVector{CellPlacement}) =
-    Cell(name, shapes, convert(Vector{CellPlacement}, placements), nothing, nothing, CellEdit[])
+Cell(
+    name::Symbol, shapes::ShapeStore, placements::AbstractVector{CellPlacement};
+    properties::AbstractVector{Property} = Property[]
+) = Cell(name, shapes, convert(Vector{CellPlacement}, placements), nothing, nothing, CellEdit[], collect(properties))
 
-Cell(name::Symbol, shapes::Vector{<:Shape}, placements::AbstractVector{CellPlacement}) =
-    Cell(name, ShapeStore(shapes), placements)
+Cell(
+    name::Symbol, shapes::Vector{<:Shape}, placements::AbstractVector{CellPlacement};
+    properties::AbstractVector{Property} = Property[]
+) = Cell(name, ShapeStore(shapes), placements; properties = properties)
 
-Cell(name::Symbol, source::CellSource) = Cell(name, nothing, nothing, source, nothing, CellEdit[])
+Cell(name::Symbol, source::CellSource, properties::Vector{Property} = Property[]) =
+    Cell(name, nothing, nothing, source, nothing, CellEdit[], properties)
 
 """
     name(cell)
@@ -465,11 +500,13 @@ Object containing all the data of your OASIS file.
 - `cells::Vector{Cell}`: Cells in your OASIS file, loaded or not.
 - `layers::Vector{Layer}`: Lists all named layers in your OASIS file.
 - `unit::Float64`: Unit length, in grid steps per micron.
+- `properties::Vector{Property}`: Properties of the file as a whole.
 """
 mutable struct Oasis
     const cells::Vector{Cell}
     const layers::Vector{Layer} # FIXME: Unnamed layers aren't added right now.
     unit::Float64
+    const properties::Vector{Property}
     # Cell name to position in `cells`. Rebuilt on demand if `cells` is mutated directly.
     const _index::Dict{Symbol, Int64}
     _indexedLength::Int64
@@ -478,12 +515,14 @@ end
 function Oasis(
     cells::AbstractVector = Cell[],
     layers::AbstractVector{Layer} = Layer[];
-    unit::Real = DEFAULT_UNIT
+    unit::Real = DEFAULT_UNIT,
+    properties::AbstractVector{Property} = Property[]
 )
     oas = Oasis(
         convert(Vector{Cell}, cells),
         convert(Vector{Layer}, layers),
         Float64(unit),
+        collect(properties),
         Dict{Symbol, Int64}(),
         0
     )
@@ -546,6 +585,8 @@ end
 Unit length of an OASIS object, in grid steps per micron.
 """
 unit(oas::Oasis) = oas.unit
+
+properties(oas::Oasis) = oas.properties
 
 """
     cells(oas)

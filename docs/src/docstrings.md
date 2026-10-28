@@ -1,6 +1,6 @@
 ```@autodocs
 Modules = [OasisTools]
-Order   = [:function, :type]
+Order   = [:function, :type, :constant]
 ```
 
 ```@docs

@@ -54,9 +54,17 @@ function load!(cell::Cell)
     sink = decode_cell(ContentsSink(), cell)
     cell.shapes = sink.shapes
     cell.placements = sink.placements
+    # A loaded cell keeps all of its properties itself.
+    append!(cell.properties, sink.properties)
     cell.index = nothing
     empty!(cell.edits)
     return cell
+end
+
+function properties(cell::Cell)
+    isloaded(cell) && return cell.properties
+    following_cell = cached_index(cell).properties
+    return isempty(following_cell) ? copy(cell.properties) : vcat(cell.properties, following_cell)
 end
 
 function load!(oas::Oasis)
@@ -251,8 +259,10 @@ foreach_shape(f, cell::Cell) = (decode_cell(ShapeCallback(f), cell); nothing)
 # from never change, so they can be shared.
 function copy_cell(cell::Cell; name::Symbol = cell.name)
     if isloaded(cell)
-        return Cell(name, copy(cell.shapes), copy(cell.placements))
+        return Cell(name, copy(cell.shapes), copy(cell.placements); properties = copy(cell.properties))
     else
-        return Cell(name, nothing, nothing, cell.source, cell.index, map(copy_edit, cell.edits))
+        return Cell(
+            name, nothing, nothing, cell.source, cell.index, map(copy_edit, cell.edits), copy(cell.properties)
+        )
     end
 end

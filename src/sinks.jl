@@ -1,13 +1,21 @@
 # The cell decoder hands every shape and placement it decodes to a sink, which decides what to
-# keep. This lets a single decoder serve loading, indexing, streaming and writing.
+# keep. This lets a single decoder serve loading, indexing, streaming and writing. Once the cell
+# is decoded, the sink also gets the properties of the cell that follow its CELL record, through
+# `push_cell_properties!`.
+
+push_cell_properties!(sink, ::Vector{Property}) = nothing
 
 # Keeps everything, for loading a cell into memory.
 struct ContentsSink
     shapes::ShapeStore
     placements::Vector{CellPlacement}
+    properties::Vector{Property}
 end
 
 ContentsSink() = ContentsSink(ShapeStore(), CellPlacement[])
+ContentsSink(shapes::ShapeStore, placements::Vector{CellPlacement}) = ContentsSink(shapes, placements, Property[])
+
+push_cell_properties!(sink::ContentsSink, properties::Vector{Property}) = append!(sink.properties, properties)
 
 push_element!(sink::ContentsSink, shape::Shape) = push!(sink.shapes, shape)
 push_element!(sink::ContentsSink, placement::CellPlacement) = push!(sink.placements, placement)
@@ -18,9 +26,13 @@ mutable struct IndexSink
     const placements::Vector{CellPlacement}
     const layers::Vector{Pair{Tuple{UInt64, UInt64}, ElementCounts}}
     extent::Union{Nothing, Rect{2, Int64}}
+    properties::Vector{Property}
 end
 
-IndexSink() = IndexSink(CellPlacement[], Pair{Tuple{UInt64, UInt64}, ElementCounts}[], nothing)
+IndexSink() = IndexSink(CellPlacement[], Pair{Tuple{UInt64, UInt64}, ElementCounts}[], nothing, NO_PROPERTIES)
+
+push_cell_properties!(sink::IndexSink, properties::Vector{Property}) =
+    isempty(properties) || (sink.properties = vcat(sink.properties, properties))
 
 function push_element!(sink::IndexSink, shape::Shape)
     key = (shape.layer, shape.datatype)
@@ -44,7 +56,10 @@ push_element!(sink::IndexSink, placement::CellPlacement) = push!(sink.placements
 const NO_PLACEMENTS = CellPlacement[]
 
 CellIndex(sink::IndexSink) =
-    CellIndex(isempty(sink.placements) ? NO_PLACEMENTS : sink.placements, sink.layers, sink.extent)
+    CellIndex(isempty(sink.placements) ? NO_PLACEMENTS : sink.placements, sink.layers, sink.extent, sink.properties)
+
+# Most cells have no properties either. Like NO_PLACEMENTS, this list is never modified.
+const NO_PROPERTIES = Property[]
 
 # Passes shapes on to a function, for streaming through them.
 struct ShapeCallback{F}
@@ -77,6 +92,7 @@ struct EditedSink{S}
 end
 
 push_element!(sink::EditedSink, element) = pass_through_edits(sink.sink, sink.edits, 1, element)
+push_cell_properties!(sink::EditedSink, properties::Vector{Property}) = push_cell_properties!(sink.sink, properties)
 
 function pass_through_edits(sink, edits::Vector{CellEdit}, i::Int, element)
     if i > length(edits)
@@ -126,4 +142,6 @@ function decode_source(sink, source::CellSource)
         record_type = read_byte(state)
         read_record(record_type, state)
     end
+    flush_pending!(state)
+    push_cell_properties!(sink, state.pending.cellProperties)
 end

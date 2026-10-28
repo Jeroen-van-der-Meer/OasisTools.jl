@@ -270,13 +270,17 @@ def make_large(layout):
 
 
 def make_properties(layout):
-    """Properties on shapes and placements."""
+    """Properties on shapes, placements, a cell and the file."""
     sub = layout.create_cell("SUB")
     sub.shapes(layout.layer(1, 0)).insert(db.Box(0, 0, 10, 10), layout.properties_id({"kind": "sub"}))
     top = layout.create_cell("TOP")
     top.shapes(layout.layer(1, 0)).insert(db.Box(0, 0, 100, 100), layout.properties_id({1: "net_a", "name": "label"}))
     top.shapes(layout.layer(2, 0)).insert(db.Box(200, 0, 300, 100), layout.properties_id({"kind": "via"}))
     top.insert(db.CellInstArray(sub.cell_index(), db.Trans(db.Vector(500, 0))), layout.properties_id({"instance": "X1"}))
+    top.insert(db.CellInstArray(sub.cell_index(), db.Trans(db.Vector(800, 0))), layout.properties_id({"count": 3, 7: "gds"}))
+    top.shapes(layout.layer(3, 0)).insert(db.Text("label", db.Trans(0, 200)), layout.properties_id({"of_text": 1.5}))
+    top.prop_id = layout.properties_id({"of_cell": "yes"})
+    layout.prop_id = layout.properties_id({"of_file": 42})
 
 
 def make_empty(layout):
@@ -339,6 +343,43 @@ def check_instances(args):
                 f"missing {missing}, extra {extra}")
 
 
+def property_text(layout, prop_id):
+    """A property set as KLayout sees it, in a form that doesn't depend on the order of the
+    properties; see `property_lines` in interop_test.jl for the same on OasisTools' side."""
+    def value(v):
+        return repr(float(v)) if isinstance(v, (int, float)) else str(v)
+    return ";".join(sorted(f"{k}={value(v)}" for k, v in layout.properties(prop_id)))
+
+
+def check_properties(args):
+    """check_properties FILE LINES: compares the properties KLayout reads from FILE with those
+    listed in LINES, one `cell<TAB>kind<TAB>properties` line per file, cell, shape or placement
+    with properties."""
+    path, lines_path = args
+    layout, warnings = read_layout(path)
+    for warning in warnings:
+        problem(warning)
+    expected = []
+    if layout.prop_id:
+        expected.append(("", "file", property_text(layout, layout.prop_id)))
+    for cell in layout.each_cell():
+        if cell.prop_id:
+            expected.append((cell.name, "cell", property_text(layout, cell.prop_id)))
+        for index in layout.layer_indexes():
+            for shape in cell.shapes(index).each():
+                if shape.prop_id:
+                    expected.append((cell.name, "shape", property_text(layout, shape.prop_id)))
+        for inst in cell.each_inst():
+            if inst.prop_id:
+                expected.append((cell.name, "placement", property_text(layout, inst.prop_id)))
+    with open(lines_path) as f:
+        found = [tuple(line.rstrip("\n").split("\t")) for line in f if line.strip()]
+    if sorted(expected) != sorted(found):
+        missing = [e for e in expected if e not in found]
+        extra = [e for e in found if e not in expected]
+        problem(f"Properties differ: missing {missing}, extra {extra}")
+
+
 def batch(args):
     """Runs the commands in a file, one per line with tab-separated arguments, printing
     `END i` after the output of the i-th command."""
@@ -352,7 +393,10 @@ def batch(args):
         print(f"END {i}", flush=True)
 
 
-COMMANDS = {"generate": generate, "compare": compare, "check_instances": check_instances, "batch": batch}
+COMMANDS = {
+    "generate": generate, "compare": compare, "check_instances": check_instances,
+    "check_properties": check_properties, "batch": batch,
+}
 
 
 if __name__ == "__main__":
